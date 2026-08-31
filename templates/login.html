@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ app_name }} — Sign In</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link rel="stylesheet" href="/static/css/login.css?v={{ asset_v }}" />
+</head>
+<body>
+    <div class="auth-container">
+        <!-- Left panel: branding -->
+        <div class="auth-brand">
+            <div class="brand-content">
+                <h1>{{ app_name }}</h1>
+                <p>{{ tagline }} — track full-time employee resources and give people managers a clear view of their reportees.</p>
+                <div class="brand-features">
+                    <div class="feature"><i class="fas fa-shield-halved"></i><span>Secure &amp; Compliant</span></div>
+                    <div class="feature"><i class="fas fa-users"></i><span>Internal Access Only</span></div>
+                    <div class="feature"><i class="fas fa-lock"></i><span>Azure AD Protected</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right panel: sign in -->
+        <div class="auth-form-panel">
+            <div class="auth-form-wrapper">
+                <div class="auth-header">
+                    <h2>Welcome Back</h2>
+                    <p>Sign in to access {{ app_name }}.</p>
+                </div>
+                <a class="auth-btn" href="/">
+                    <i class="fas fa-building"></i> Sign in with Philips SSO
+                </a>
+                <p class="auth-note">
+                    <i class="fas fa-info-circle"></i>
+                    You will be signed in with your Philips account.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="stet-badge">
+        <span class="stet-badge-text">Developed by STET</span>
+    </div>
+</body>
+</html>

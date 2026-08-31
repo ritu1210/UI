@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}People Leader Dashboard &mdash; {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h1>Allocation Dashboard <span class="tag">People Leader</span></h1>
+    <p class="subtitle">Team utilization, capacity coverage and bench risk across reporting managers.</p>
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <div class="field">
+            <label>Reporting Manager</label>
+            <select id="leaderManager"><option value="">All teams</option></select>
+        </div>
+        <div class="field">
+            <label>Month</label>
+            <select id="leaderMonth"></select>
+        </div>
+        <button class="btn btn-ghost" id="leaderReset"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        <div class="toolbar-note" id="leaderMonthNote"></div>
+    </div>
+    <div class="stat-row kpi-grid" id="leaderStats"></div>
+</section>
+
+<div class="chart-grid">
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-ranking-star"></i><h3 id="titleTeamUtil">Team Utilization by Manager</h3></div>
+        <div class="chart-box"><canvas id="chartTeamUtil"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-chart-pie"></i><h3>Workforce Utilization Mix</h3></div>
+        <div class="chart-box"><canvas id="chartMix"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-chart-line"></i><h3 id="titleTrend">Utilization Trend (12 Months)</h3></div>
+        <div class="chart-box"><canvas id="chartTrend"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-users-between-lines"></i><h3 id="titleCapacity">Team Size vs Allocated Reportees</h3></div>
+        <div class="chart-box"><canvas id="chartCapacity"></canvas></div>
+    </div>
+</div>
+
+<section class="card" style="margin-top:24px;">
+    <div class="card-head"><i class="fa-solid fa-table-list"></i><h2 id="leaderTableTitle">Team Breakdown</h2></div>
+    <div class="table-wrap">
+        <table class="data-table" id="leaderTable">
+            <thead id="leaderHead"></thead>
+            <tbody id="leaderBody">
+                <tr class="empty-row"><td colspan="7">Loading&hellip;</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/dashboard.js?v={{ asset_v }}"></script>
+<script>initLeaderDashboard();</script>
+{% endblock %}

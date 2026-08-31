@@ -1,0 +1,79 @@
+/* Login / sign-in page — adapted from the RSL auth layout. */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    height: 100vh; overflow: hidden;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f0f4f8;
+}
+
+.auth-container { display: flex; height: 100vh; width: 100vw; }
+
+/* Left brand panel */
+.auth-brand {
+    flex: 0 0 44%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #0B5ED7 0%, #083d8f 60%, #062b66 100%);
+    padding: 60px; position: relative; overflow: hidden;
+}
+.auth-brand::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at 30% 70%, rgba(255,255,255,0.06) 0%, transparent 60%);
+}
+.brand-content { position: relative; z-index: 1; color: #fff; max-width: 400px; }
+.brand-logo { height: 34px; width: auto; margin-bottom: 34px; }
+.brand-content h1 {
+    font-size: 2.2rem; font-weight: 700; line-height: 1.2;
+    margin-bottom: 16px; letter-spacing: -0.5px;
+}
+.brand-content p {
+    font-size: 0.95rem; color: rgba(255,255,255,0.82); line-height: 1.6; margin-bottom: 36px;
+}
+.brand-features { display: flex; flex-direction: column; gap: 14px; }
+.feature {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 0.88rem; color: rgba(255,255,255,0.9); font-weight: 500;
+}
+.feature i { font-size: 1rem; color: #60a5fa; width: 20px; text-align: center; }
+
+/* Right form panel */
+.auth-form-panel {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 40px; background: #fff;
+}
+.auth-form-wrapper { width: 100%; max-width: 400px; }
+.auth-header { margin-bottom: 28px; }
+.auth-header h2 { font-size: 1.6rem; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+.auth-header p { font-size: 0.9rem; color: #64748b; }
+
+.auth-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    background: linear-gradient(135deg, #0B5ED7, #1d6fe8); color: #fff;
+    text-decoration: none; border: none; padding: 14px 28px; border-radius: 8px;
+    font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%;
+    box-shadow: 0 4px 14px rgba(11,94,215,0.3); transition: filter .15s ease, transform .15s ease;
+}
+.auth-btn:hover { filter: brightness(1.05); transform: translateY(-1px); }
+
+.auth-note {
+    margin-top: 18px; color: #64748b; font-size: 0.82rem;
+    display: flex; align-items: center; gap: 8px;
+}
+.auth-note i { color: #0B5ED7; }
+
+.stet-badge {
+    position: fixed; bottom: 14px; right: 16px; z-index: 9999;
+    pointer-events: none; user-select: none;
+}
+.stet-badge-text {
+    color: #293E72; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.7);
+}
+
+@media (max-width: 768px) {
+    .auth-container { flex-direction: column; }
+    .auth-brand { flex: 0 0 auto; padding: 40px 30px; min-height: 200px; }
+    .brand-content h1 { font-size: 1.5rem; }
+    .brand-features { display: none; }
+    .auth-form-panel { padding: 30px 20px; }
+}

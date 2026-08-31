@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Business Unit Dashboard &mdash; {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h1>Allocation Dashboard <span class="tag">Business Unit</span></h1>
+    <p class="subtitle">Allocation volume, headcount and project spread across business units.</p>
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <div class="field">
+            <label>Month</label>
+            <select id="buMonth"><option value="">All months</option></select>
+        </div>
+        <button class="btn btn-ghost" id="buReset"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        <div class="toolbar-note" id="buMonthNote"></div>
+    </div>
+    <div class="stat-row kpi-grid" id="buStats"></div>
+</section>
+
+<div class="chart-grid">
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-ranking-star"></i><h3>Average Allocation by Business Unit</h3></div>
+        <div class="chart-box"><canvas id="chartBuAvg"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-chart-pie"></i><h3>Allocation Share by Business Unit</h3></div>
+        <div class="chart-box"><canvas id="chartBuShare"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-chart-line"></i><h3>Total Allocation Trend (12 Months)</h3></div>
+        <div class="chart-box"><canvas id="chartBuTrend"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-users-between-lines"></i><h3>Employees vs Projects by Business Unit</h3></div>
+        <div class="chart-box"><canvas id="chartBuMix"></canvas></div>
+    </div>
+</div>
+
+<section class="card" style="margin-top:24px;">
+    <div class="card-head"><i class="fa-solid fa-table-list"></i><h2>Business Unit Breakdown</h2></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Business Unit</th>
+                    <th>Employees</th>
+                    <th>Projects</th>
+                    <th>Allocations</th>
+                    <th>Avg Allocation</th>
+                    <th>Share of Total</th>
+                </tr>
+            </thead>
+            <tbody id="buBody">
+                <tr class="empty-row"><td colspan="6">Loading&hellip;</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/dashboard.js?v={{ asset_v }}"></script>
+<script>initBuDashboard();</script>
+{% endblock %}
