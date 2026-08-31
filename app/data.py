@@ -165,3 +165,43 @@ def load_fte_allocations() -> list[FteAllocation]:
                 )
             )
     return allocs
+
+
+def _append_csv_row(path, values: dict[str, str]) -> None:
+    """Append one row to a CSV, matching its existing header order."""
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        fieldnames = csv.DictReader(fh).fieldnames or []
+
+    # Ensure the file ends with a newline before appending a new record.
+    needs_nl = False
+    with path.open("rb") as fh:
+        fh.seek(0, 2)
+        if fh.tell() > 0:
+            fh.seek(-1, 2)
+            needs_nl = fh.read(1) not in (b"\n", b"\r")
+
+    row = {name: "" for name in fieldnames}
+    for col, val in values.items():
+        if col in row:
+            row[col] = _clean(val)
+
+    with path.open("a", encoding="utf-8", newline="") as fh:
+        if needs_nl:
+            fh.write("\r\n")
+        csv.DictWriter(fh, fieldnames=fieldnames).writerow(row)
+
+
+def append_project(values: dict[str, str]) -> Project:
+    """Append a funnel project and refresh the project caches."""
+    _append_csv_row(config.FUNNEL_FILE, values)
+    load_projects.cache_clear()
+    project_index.cache_clear()
+    return project_index()[values["SMRS / Project ID"]]
+
+
+def append_employee(values: dict[str, str]) -> Employee:
+    """Append a headcount employee and refresh the employee caches."""
+    _append_csv_row(config.HEADCOUNT_FILE, values)
+    load_employees.cache_clear()
+    employee_index.cache_clear()
+    return employee_index()[values["Employee Name (HC)"]]

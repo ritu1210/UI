@@ -1,13 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { UTIL_COLORS, utilBand } from '../lib/charts'
+import Combobox from '../components/Combobox'
+import Modal from '../components/Modal'
 import { apiFetch } from '../lib/api'
+import { downloadCsv } from '../lib/export'
 import { useToast } from '../context/ToastContext'
 
 const STATUS_LABEL = { bench: 'Zero allocation', under: 'Under-utilized', healthy: 'Healthy', over: 'Over-allocated' }
 
-function statCard(val, label, tone) {
-  return <div className={`stat ${tone || ''}`}><div className="stat-val">{val}</div><div className="stat-label">{label}</div></div>
+function statCard(val, label, tone, onClick) {
+  return (
+    <div
+      className={`stat ${tone || ''}${onClick ? ' clickable' : ''}`}
+      onClick={onClick}
+      title={onClick ? 'Click to see who' : undefined}
+    >
+      <div className="stat-val">{val}</div>
+      <div className="stat-label">{label}{onClick && <i className="fa-solid fa-up-right-from-square stat-drill" />}</div>
+    </div>
+  )
 }
 function utilPill(util) {
   return <span className={`pill u-${utilBand(util)}`}>{util}%</span>
@@ -31,10 +43,26 @@ export default function DashboardLeader() {
   const [month, setMonth] = useState('')
   const [currentMonth, setCurrentMonth] = useState(null)
   const [data, setData] = useState(null)
+  const [drill, setDrill] = useState(null)
+  const [drillData, setDrillData] = useState(null)
+  const [drillLoading, setDrillLoading] = useState(false)
+  const [drillQuery, setDrillQuery] = useState('')
 
   useEffect(() => {
     apiFetch('/api/managers').then(setManagers).catch((e) => showToast(e.message, true))
   }, [showToast])
+
+  useEffect(() => {
+    if (!drill) { setDrillData(null); return }
+    setDrillLoading(true)
+    const params = new URLSearchParams({ status: drill.status })
+    if (manager) params.set('manager', manager)
+    if (month) params.set('month', month)
+    apiFetch('/api/dashboard/reportees-by-status?' + params.toString())
+      .then(setDrillData)
+      .catch((e) => showToast(e.message, true))
+      .finally(() => setDrillLoading(false))
+  }, [drill, manager, month, showToast])
 
   useEffect(() => {
     const params = new URLSearchParams()
@@ -53,6 +81,24 @@ export default function DashboardLeader() {
   const isTeam = data.scope === 'team'
   const k = data.kpis
   const u = data.utilization
+  const drillRows = (drillData?.rows || []).filter((r) => {
+    const q = drillQuery.trim().toLowerCase()
+    return !q || r.name.toLowerCase().includes(q) || r.reporting_manager.toLowerCase().includes(q)
+  })
+
+  function exportDrill() {
+    const monthLabel = drillData?.month || data.month
+    const scope = isTeam ? data.scope_label : 'All teams'
+    const safe = `${drill.label}_${scope}_${monthLabel}`.replace(/[^\w]+/g, '-')
+    downloadCsv(`${safe}.csv`, [
+      { header: 'Name', value: (r) => r.name },
+      { header: 'Job Title', value: (r) => r.job_title },
+      { header: 'Reports To', value: (r) => r.reporting_manager },
+      { header: 'Location', value: (r) => r.location },
+      { header: 'Projects', value: (r) => r.projects },
+      { header: 'Utilization %', value: (r) => r.util },
+    ], drillRows)
+  }
   const teamUtilRows = isTeam
     ? data.by_reportee.map((r) => ({ manager: r.name, avg_util: r.util })).slice(0, 12)
     : data.by_manager.slice(0, 12)
@@ -103,16 +149,27 @@ export default function DashboardLeader() {
         <div className="toolbar">
           <div className="field">
             <label>Team</label>
-            <select value={manager} onChange={(e) => setManager(e.target.value)}>
-              <option value="">All teams</option>
-              {managers.map((m) => <option key={m.value} value={m.value}>{m.label} ({m.reportees})</option>)}
-            </select>
+            <Combobox
+              items={managers.map((m) => ({ value: m.value, label: m.label, sub: `${m.reportees} reportees` }))}
+              value={manager}
+              onSelect={(v) => setManager(v)}
+              allLabel="All teams"
+              placeholder="All teams"
+              icon="fa-user-tie"
+              avatar
+            />
           </div>
           <div className="field">
             <label>Month</label>
-            <select value={month} onChange={(e) => setMonth(e.target.value)}>
-              {data.months.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <Combobox
+              items={data.months}
+              value={month}
+              onSelect={(v) => setMonth(v || currentMonth || '')}
+              allLabel="Current month"
+              placeholder="Select month"
+              icon="fa-calendar-day"
+              width={180}
+            />
           </div>
           <button className="btn btn-ghost" onClick={() => { setManager(''); if (currentMonth) setMonth(currentMonth) }}>
             <i className="fa-solid fa-rotate-left" /> Reset
@@ -125,9 +182,9 @@ export default function DashboardLeader() {
             ? statCard(k.reportees, 'Reportees')
             : <>{statCard(k.leaders, 'People Leaders')}{statCard(k.reportees, 'Reportees')}</>}
           {statCard(`${k.avg_util}%`, 'Avg Utilization')}
-          {statCard(k.fully_allocated, 'Fully Allocated', 'accent')}
-          {statCard(k.over_allocated, 'Over-allocated', 'deep')}
-          {statCard(k.bench, 'Zero Allocation', 'soft')}
+          {statCard(k.fully_allocated, 'Fully Allocated', 'accent', () => setDrill({ status: 'fully', label: 'Fully Allocated' }))}
+          {statCard(k.over_allocated, 'Over-allocated', 'deep', () => setDrill({ status: 'over', label: 'Over-allocated' }))}
+          {statCard(k.bench, 'Zero Allocation', 'soft', () => setDrill({ status: 'bench', label: 'Zero Allocation' }))}
         </div>
         <div style={{ height: 20 }} />
       </section>
@@ -224,6 +281,50 @@ export default function DashboardLeader() {
           </table>
         </div>
       </section>
+
+      {drill && (
+        <Modal
+          icon="fa-user-group"
+          title={`${drill.label} — ${drillData ? drillData.count : '…'} ${drillData && drillData.count === 1 ? 'person' : 'people'}`}
+          subtitle={`${isTeam ? data.scope_label + ' · ' : 'All teams · '}${drillData?.month || data.month}`}
+          onClose={() => setDrill(null)}
+        >
+          <div className="modal-toolbar">
+            <div className="modal-search-box">
+              <i className="fa-solid fa-magnifying-glass" />
+              <input type="text" placeholder="Search name or manager…" value={drillQuery} onChange={(e) => setDrillQuery(e.target.value)} />
+            </div>
+            <button className="btn btn-outline" onClick={exportDrill} disabled={!drillRows.length}>
+              <i className="fa-solid fa-file-excel" /> Export to Excel
+            </button>
+          </div>
+          {drillLoading ? (
+            <div className="loading-wrap"><span className="spinner" /> Loading…</div>
+          ) : drillRows.length === 0 ? (
+            <div className="modal-empty">No people found.</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Name</th><th>Job Title</th><th>Reports To</th><th>Location</th><th>Projects</th><th>Utilization</th></tr>
+                </thead>
+                <tbody>
+                  {drillRows.map((r, i) => (
+                    <tr key={`${r.name}-${i}`}>
+                      <td><strong>{r.name}</strong></td>
+                      <td>{r.job_title || '—'}</td>
+                      <td>{r.reporting_manager}</td>
+                      <td>{r.location || '—'}</td>
+                      <td>{r.projects}</td>
+                      <td>{utilPill(r.util)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Modal>
+      )}
     </>
   )
 }

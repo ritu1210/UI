@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bar } from 'react-chartjs-2'
 import '../lib/charts'
+import Combobox from '../components/Combobox'
 import { apiFetch } from '../lib/api'
 import { MONTHS } from '../lib/constants'
 import { useToast } from '../context/ToastContext'
@@ -101,24 +102,38 @@ export default function DashboardUser() {
         <div className="toolbar">
           <div className="field">
             <label>Reporting Manager</label>
-            <select value={manager} onChange={(e) => { setManager(e.target.value); setEmployee('') }}>
-              <option value="">All managers</option>
-              {managers.map((m) => <option key={m.value} value={m.value}>{m.label} ({m.reportees})</option>)}
-            </select>
+            <Combobox
+              items={managers.map((m) => ({ value: m.value, label: m.label, sub: `${m.reportees} reportees` }))}
+              value={manager}
+              onSelect={(v) => { setManager(v); setEmployee('') }}
+              allLabel="All managers"
+              placeholder="All managers"
+              icon="fa-user-tie"
+              avatar
+            />
           </div>
           <div className="field">
             <label>Employee</label>
-            <select value={employee} onChange={(e) => setEmployee(e.target.value)}>
-              <option value="">All employees</option>
-              {employeeOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <Combobox
+              items={employeeOptions}
+              value={employee}
+              onSelect={(v) => setEmployee(v)}
+              allLabel="All employees"
+              placeholder="All employees"
+              icon="fa-user"
+            />
           </div>
           <div className="field">
             <label>Month</label>
-            <select value={month} onChange={(e) => setMonth(e.target.value)}>
-              <option value="">All months</option>
-              {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <Combobox
+              items={MONTHS}
+              value={month}
+              onSelect={(v) => setMonth(v)}
+              allLabel="All months"
+              placeholder="All months"
+              icon="fa-calendar-day"
+              width={180}
+            />
           </div>
           <button className="btn btn-ghost" onClick={reset}><i className="fa-solid fa-rotate-left" /> Reset</button>
         </div>

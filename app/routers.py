@@ -371,6 +371,175 @@ def dashboard_people_leader(month: str | None = None, manager: str | None = None
     }
 
 
+@router.get("/dashboard/reportees-by-status")
+def dashboard_reportees_by_status(status: str, month: str | None = None, manager: str | None = None):
+    """List the individual reportees in a utilization band (and who they report to).
+
+    ``status`` is one of bench / under / healthy / over, or the group ``fully``
+    (healthy + over). Optionally narrowed to a single ``manager``'s team.
+    """
+    employees = data.load_employees()
+    sel_month = month if month in store.MONTHS else store.current_month()
+
+    util_by_emp: dict[str, float] = defaultdict(float)
+    projects_in_month: dict[str, int] = defaultdict(int)
+    for a in store.list_all():
+        if a.month == sel_month:
+            util_by_emp[a.employee] += a.allocation
+            projects_in_month[a.employee] += 1
+
+    wanted = {"healthy", "over"} if status == "fully" else {status}
+    key = manager.lower() if manager else None
+
+    rows = []
+    for e in employees:
+        if not e.reporting_manager:
+            continue
+        if key and e.reporting_manager.lower() != key:
+            continue
+        util = util_by_emp.get(e.name, 0.0)
+        band = _band(util)
+        if band not in wanted:
+            continue
+        rows.append({
+            "name": e.name,
+            "job_title": e.job_title,
+            "reporting_manager": _pretty_manager(e.reporting_manager),
+            "reporting_manager_email": e.reporting_manager,
+            "location": e.location,
+            "util": round(util, 1),
+            "projects": projects_in_month.get(e.name, 0),
+            "status": band,
+        })
+    rows.sort(key=lambda r: (r["reporting_manager"].lower(), r["name"].lower()))
+    return {"month": sel_month, "status": status, "count": len(rows), "rows": rows}
+
+
+# ---------------------------------------------------------------------------
+# PM data entry: append rows to the source CSV files (Funnel / Headcount).
+# ---------------------------------------------------------------------------
+
+FUNNEL_COLUMNS = {
+    "project_id": "SMRS / Project ID",
+    "title": "STET Funnel Project Title",
+    "director": "Director",
+    "spoc": "STET SPOC",
+    "program_manager": "Program Manager",
+    "project_type": "Project Type (PRODUCTIVITY, AOS, LCM, NPI, CART PDC, TEST ENG, CONQ, IGM)",
+    "commodity": "Commodity",
+    "bu": "BU",
+    "cluster": "Cluster",
+    "current_il": "Current IL",
+}
+
+HEADCOUNT_COLUMNS = {
+    "name": "Employee Name (HC)",
+    "email": "Email ID",
+    "job_title": "Job Title (HC)",
+    "job_grade": "Job Grade (HC)",
+    "director": "Director",
+    "country": "Location Country (HC)",
+    "location": "Job Location (HC)",
+    "gender": "Diversity (HC)",
+    "status": "Employment Status (HC)",
+    "start_date": "Employee Start Date (M/D/YYYY)",
+    "reporting_manager": "Reporting Manager (HC)",
+    "employment_type": "Employment Type (HC)",
+}
+
+
+class FunnelIn(BaseModel):
+    project_id: str
+    title: str
+    director: str = ""
+    spoc: str = ""
+    program_manager: str = ""
+    project_type: str = ""
+    commodity: str = ""
+    bu: str = ""
+    cluster: str = ""
+    current_il: str = ""
+
+
+class HeadcountIn(BaseModel):
+    name: str
+    email: str
+    job_title: str = ""
+    job_grade: str = ""
+    director: str = ""
+    country: str = ""
+    location: str = ""
+    gender: str = ""
+    status: str = ""
+    start_date: str = ""
+    reporting_manager: str = ""
+    employment_type: str = ""
+
+
+@router.get("/meta")
+def meta():
+    """Distinct existing values used to power the data-entry form suggestions."""
+    projects = data.load_projects()
+    employees = data.load_employees()
+
+    def distinct(values):
+        return sorted({v for v in values if v})
+
+    return {
+        "bus": distinct(p.bu for p in projects),
+        "clusters": distinct(p.cluster for p in projects),
+        "project_types": distinct(p.project_type for p in projects),
+        "commodities": distinct(p.commodity for p in projects),
+        "current_ils": distinct(p.current_il for p in projects),
+        "spocs": distinct(p.spoc for p in projects),
+        "program_managers": distinct(p.program_manager for p in projects),
+        "directors": distinct([p.director for p in projects] + [e.director for e in employees]),
+        "countries": distinct(e.country for e in employees),
+        "locations": distinct(e.location for e in employees),
+        "job_titles": distinct(e.job_title for e in employees),
+        "job_grades": distinct(e.job_grade for e in employees),
+        "employment_types": distinct(e.employment_type for e in employees),
+        "statuses": distinct(e.status for e in employees),
+        "reporting_managers": distinct(e.reporting_manager for e in employees),
+    }
+
+
+@router.post("/funnel", status_code=201)
+def add_funnel_project(payload: FunnelIn):
+    if not payload.project_id.strip() or not payload.title.strip():
+        raise HTTPException(status_code=422, detail="Project ID and Title are required")
+    if data.project_index().get(payload.project_id.strip()):
+        raise HTTPException(status_code=409, detail="A project with this ID already exists")
+    values = {FUNNEL_COLUMNS[k]: v for k, v in payload.model_dump().items()}
+    project = data.append_project(values)
+    return {
+        "project_id": project.project_id,
+        "title": project.title,
+        "bu": project.bu,
+        "cluster": project.cluster,
+        "project_type": project.project_type,
+        "spoc": project.spoc,
+    }
+
+
+@router.post("/headcount", status_code=201)
+def add_headcount(payload: HeadcountIn):
+    if not payload.name.strip() or not payload.email.strip():
+        raise HTTPException(status_code=422, detail="Employee Name and Email are required")
+    email = payload.email.strip().lower()
+    if any(e.email.lower() == email for e in data.load_employees() if e.email):
+        raise HTTPException(status_code=409, detail="An employee with this email already exists")
+    values = {HEADCOUNT_COLUMNS[k]: v for k, v in payload.model_dump().items()}
+    employee = data.append_employee(values)
+    return {
+        "name": employee.name,
+        "job_title": employee.job_title,
+        "reporting_manager": employee.reporting_manager,
+        "location": employee.location,
+        "email": employee.email,
+    }
+
+
 @router.get("/dashboard/business-unit")
 def dashboard_business_unit(month: str | None = None):
     """Business-unit view: allocation, headcount and project spread per BU."""
