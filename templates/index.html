@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Welcome &mdash; {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h1>Welcome to {{ app_name }}</h1>
+    <p class="subtitle">Track full-time employee resources and give people managers a clear view of their reportees.</p>
+</div>
+
+<div class="grid grid-2">
+    <section class="card">
+        <div class="card-head">
+            <i class="fa-solid fa-circle-info"></i>
+            <h2>About</h2>
+        </div>
+        <p class="muted">
+            The purpose of this tool is to track full-time employee resources and provide
+            people managers with a data overview of their reportees across projects,
+            people leaders and business units.
+        </p>
+
+        <h3 class="section-label">Navigation</h3>
+        <div class="nav-cards">
+            <a class="nav-card" href="/allocation">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span class="nav-card-title">Project Allocation</span>
+                <span class="nav-card-sub">Assign people to projects by month</span>
+            </a>
+            <a class="nav-card" href="/dashboard/user">
+                <i class="fa-solid fa-user-gear"></i>
+                <span class="nav-card-title">Allocation Dashboard</span>
+                <span class="nav-card-sub">User specific</span>
+            </a>
+            <a class="nav-card" href="/dashboard/people-leader">
+                <i class="fa-solid fa-users"></i>
+                <span class="nav-card-title">Allocation Dashboard</span>
+                <span class="nav-card-sub">People leader</span>
+            </a>
+            <a class="nav-card" href="/dashboard/business-unit">
+                <i class="fa-solid fa-building"></i>
+                <span class="nav-card-title">Allocation Dashboard</span>
+                <span class="nav-card-sub">Business unit</span>
+            </a>
+        </div>
+    </section>
+
+    <aside class="card card-accent">
+        <div class="card-head">
+            <i class="fa-solid fa-headset"></i>
+            <h2>Need Help?</h2>
+        </div>
+        <p class="muted">Tips and guidance for successful use of {{ app_name }}.</p>
+        <button class="btn btn-outline"><i class="fa-solid fa-book"></i> Open Guide</button>
+
+        <h3 class="section-label">Support Contacts</h3>
+        <ul class="contact-list">
+            <li><span class="contact-role">Project Updates &mdash; US / CC</span><span class="contact-name">Ashwini Jibhkate</span></li>
+            <li><span class="contact-role">Project Updates &mdash; PD</span><span class="contact-name">Adrianna Davis</span></li>
+            <li><span class="contact-role">Project Updates &mdash; IGT / PH</span><span class="contact-name">Supriya Kumari</span></li>
+            <li><span class="contact-role">Headcount &mdash; US / CC / PH</span><span class="contact-name">Meenakshi Devi</span></li>
+            <li><span class="contact-role">Headcount &mdash; PD</span><span class="contact-name">Ming Zhu DI</span></li>
+            <li><span class="contact-role">Headcount &mdash; IGT</span><span class="contact-name">Asmita Marathe</span></li>
+        </ul>
+        <div class="tool-owner">Tool Owner &mdash; <strong>{{ current_user }}</strong></div>
+    </aside>
+</div>
+{% endblock %}

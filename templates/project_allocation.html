@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Project Allocation &mdash; {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-heading with-actions">
+    <div>
+        <h1>Project Allocation</h1>
+        <p class="subtitle">Assign employees to projects and set their monthly allocation.</p>
+    </div>
+    <button class="btn btn-primary" id="addRowBtn"><i class="fa-solid fa-plus"></i> Add Allocation</button>
+</div>
+
+<div class="grid grid-alloc">
+    <section class="card no-pad">
+        <div class="toolbar">
+            <div class="field">
+                <label>Filter by Reporting Manager</label>
+                <div class="combo" id="comboManager">
+                    <input type="text" id="filterManager" class="combo-input" placeholder="Select a manager to load" autocomplete="off">
+                    <i class="fa-solid fa-chevron-down combo-caret"></i>
+                    <div class="combo-list" id="listManager" hidden></div>
+                </div>
+            </div>
+            <div class="field">
+                <label>Filter by Employee</label>
+                <div class="combo" id="comboEmployee">
+                    <input type="text" id="filterEmployee" class="combo-input" placeholder="All employees" autocomplete="off">
+                    <i class="fa-solid fa-chevron-down combo-caret"></i>
+                    <div class="combo-list" id="listEmployee" hidden></div>
+                </div>
+            </div>
+            <div class="field">
+                <label>Filter by Allocation Month</label>
+                <div class="combo" id="comboMonth">
+                    <input type="text" id="filterMonth" class="combo-input" placeholder="All months" autocomplete="off">
+                    <i class="fa-solid fa-chevron-down combo-caret"></i>
+                    <div class="combo-list" id="listMonth" hidden></div>
+                </div>
+            </div>
+            <button class="btn btn-ghost" id="clearFilters"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="data-table" id="allocTable">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Project ID</th>
+                        <th>Project Title</th>
+                        <th>Month</th>
+                        <th>Allocation</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="allocBody">
+                    <tr class="empty-row"><td colspan="6">Loading allocations&hellip;</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <aside class="card search-panel">
+        <div class="card-head">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <h2>Search Project Information</h2>
+        </div>
+        <p class="muted" id="projCount">Loading projects&hellip;</p>
+        <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="projectSearch" placeholder="Search by ID or title">
+        </div>
+        <div class="proj-list" id="projList"></div>
+    </aside>
+</div>
+
+<!-- Hidden data seeds for JS -->
+<script id="employeesData" type="application/json">
+    [{% for e in employees %}"{{ e.name|replace('"','\\"') }}"{{ "," if not loop.last }}{% endfor %}]
+</script>
+<script id="monthsData" type="application/json">
+    [{% for m in months %}"{{ m }}"{{ "," if not loop.last }}{% endfor %}]
+</script>
+<script id="allocatableMonthsData" type="application/json">
+    [{% for m in allocatable_months %}"{{ m }}"{{ "," if not loop.last }}{% endfor %}]
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/allocation.js?v={{ asset_v }}"></script>
+{% endblock %}

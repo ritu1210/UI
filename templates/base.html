@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ asset_v }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <button class="icon-btn hamburger" id="sidebarToggle" aria-label="Toggle menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <span class="brand"><img src="/static/img/philips-logo.png" alt="Philips"></span>
+            <span class="topbar-divider"></span>
+            <span class="topbar-app">{{ app_name }} <span class="topbar-app-sub">&mdash; {{ tagline }}</span></span>
+        </div>
+        <div class="topbar-right">
+            <a class="icon-btn" href="/" title="Home"><i class="fa-solid fa-house"></i></a>
+            <button class="icon-btn" title="Analytics"><i class="fa-solid fa-chart-line"></i></button>
+            <button class="icon-btn" title="Export"><i class="fa-solid fa-download"></i></button>
+            <button class="icon-btn" title="Settings"><i class="fa-solid fa-gear"></i></button>
+            <button class="icon-btn" title="Help"><i class="fa-solid fa-circle-question"></i></button>
+            <div class="avatar" title="{{ current_user }}">{{ user_initials }}</div>
+        </div>
+    </header>
+
+    <div class="layout">
+        <nav class="sidebar" id="sidebar">
+            <a href="/" class="nav-item {{ 'active' if active == 'home' }}" data-tip="Home">
+                <i class="fa-solid fa-house"></i><span class="nav-label">Home</span>
+            </a>
+            <a href="/allocation" class="nav-item {{ 'active' if active == 'allocation' }}" data-tip="Project Allocation">
+                <i class="fa-solid fa-diagram-project"></i><span class="nav-label">Allocation</span>
+            </a>
+            <a href="/dashboard/user" class="nav-item {{ 'active' if active == 'dash_user' }}" data-tip="User Dashboard">
+                <i class="fa-solid fa-user-gear"></i><span class="nav-label">User</span>
+            </a>
+            <a href="/dashboard/people-leader" class="nav-item {{ 'active' if active == 'dash_leader' }}" data-tip="People Leader Dashboard">
+                <i class="fa-solid fa-users"></i><span class="nav-label">Leader</span>
+            </a>
+            <a href="/dashboard/business-unit" class="nav-item {{ 'active' if active == 'dash_bu' }}" data-tip="Business Unit Dashboard">
+                <i class="fa-solid fa-building"></i><span class="nav-label">Business Unit</span>
+            </a>
+        </nav>
+
+        <main class="content">
+            {% block content %}{% endblock %}
+            <footer class="app-footer">
+                Logged in as <strong>{{ current_user }}</strong>
+                <span class="footer-sep">&middot;</span>
+                Developed by <strong>STET</strong>
+            </footer>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js?v={{ asset_v }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

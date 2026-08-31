@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}User Dashboard &mdash; {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <h1>Allocation Dashboard <span class="tag">User Specific</span></h1>
+    <p class="subtitle">Average allocation broken down by cluster, business unit, project type and IL.</p>
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <div class="field">
+            <label>Reporting Manager</label>
+            <select id="dashManager"><option value="">All managers</option></select>
+        </div>
+        <div class="field">
+            <label>Employee</label>
+            <select id="dashEmployee">
+                <option value="">All employees</option>
+                {% for e in employees %}
+                <option value="{{ e.name }}">{{ e.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label>Month</label>
+            <select id="dashMonth">
+                <option value="">All months</option>
+                {% for m in months %}
+                <option value="{{ m }}">{{ m }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn btn-ghost" id="dashReset"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+    </div>
+
+    <div class="stat-row" id="userStats"></div>
+</section>
+
+<div class="chart-grid">
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-layer-group"></i><h3>% Allocation by Cluster</h3></div>
+        <div class="chart-box"><canvas id="chartCluster"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-building"></i><h3>% Allocation by Business Unit</h3></div>
+        <div class="chart-box"><canvas id="chartBu"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-diagram-project"></i><h3>% Allocation by Project Type</h3></div>
+        <div class="chart-box"><canvas id="chartType"></canvas></div>
+    </div>
+    <div class="card chart-card">
+        <div class="chart-head"><i class="fa-solid fa-signal"></i><h3>% Allocation by Project IL</h3></div>
+        <div class="chart-box"><canvas id="chartIl"></canvas></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<script src="/static/js/dashboard.js?v={{ asset_v }}"></script>
+<script>initUserDashboard();</script>
+{% endblock %}
