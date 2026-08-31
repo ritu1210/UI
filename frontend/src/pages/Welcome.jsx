@@ -3,6 +3,7 @@ import { APP_NAME, CURRENT_USER } from '../lib/constants'
 
 const NAV_CARDS = [
   { to: '/allocation', icon: 'fa-diagram-project', title: 'Project Allocation', sub: 'Assign people to projects by month' },
+  { to: '/data-entry', icon: 'fa-file-circle-plus', title: 'Data Entry', sub: 'Add funnel & headcount records' },
   { to: '/dashboard/user', icon: 'fa-user-gear', title: 'Allocation Dashboard', sub: 'User specific' },
   { to: '/dashboard/people-leader', icon: 'fa-users', title: 'Allocation Dashboard', sub: 'People leader' },
   { to: '/dashboard/business-unit', icon: 'fa-building', title: 'Allocation Dashboard', sub: 'Business unit' },

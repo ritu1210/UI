@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { BU_PALETTE, UTIL_COLORS, utilBand } from '../lib/charts'
+import Combobox from '../components/Combobox'
 import { apiFetch } from '../lib/api'
 import { useToast } from '../context/ToastContext'
 
@@ -53,10 +54,15 @@ export default function DashboardBusinessUnit() {
         <div className="toolbar">
           <div className="field">
             <label>Month</label>
-            <select value={month} onChange={(e) => setMonth(e.target.value)}>
-              <option value="">All months</option>
-              {data.months.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            <Combobox
+              items={data.months}
+              value={month}
+              onSelect={(v) => setMonth(v)}
+              allLabel="All months"
+              placeholder="All months"
+              icon="fa-calendar-day"
+              width={180}
+            />
           </div>
           <button className="btn btn-ghost" onClick={() => setMonth('')}><i className="fa-solid fa-rotate-left" /> Reset</button>
           <span className="toolbar-note">{month ? `Showing ${month}` : 'Showing all months'}</span>
