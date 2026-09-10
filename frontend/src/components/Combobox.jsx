@@ -15,12 +15,23 @@ export default function Combobox({ items, value, onSelect, allLabel = 'All', pla
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [typing, setTyping] = useState(false)
+  const [pos, setPos] = useState(null)
   const wrapRef = useRef(null)
+  const inputRef = useRef(null)
 
   const selectedLabel = useMemo(() => {
     const found = norm.find((i) => i.value === value)
     return found ? found.label : ''
   }, [norm, value])
+
+  function openList() {
+    const el = inputRef.current
+    if (el) {
+      const r = el.getBoundingClientRect()
+      setPos({ left: r.left, top: r.bottom + 6, width: r.width })
+    }
+    setOpen(true)
+  }
 
   useEffect(() => {
     function onDocDown(e) {
@@ -33,6 +44,23 @@ export default function Combobox({ items, value, onSelect, allLabel = 'All', pla
     document.addEventListener('mousedown', onDocDown)
     return () => document.removeEventListener('mousedown', onDocDown)
   }, [])
+
+  // Keep the fixed-position dropdown pinned to the input while open.
+  useEffect(() => {
+    if (!open) return
+    function reposition() {
+      const el = inputRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      setPos({ left: r.left, top: r.bottom + 6, width: r.width })
+    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open])
 
   const needle = query.trim().toLowerCase()
   const matches = needle
@@ -52,14 +80,15 @@ export default function Combobox({ items, value, onSelect, allLabel = 'All', pla
     <div className={`combo${open ? ' open' : ''}${icon ? ' has-icon' : ''}${value ? ' has-value' : ''}`} ref={wrapRef} style={{ width }}>
       {icon && <i className={`fa-solid ${icon} combo-lead`} />}
       <input
+        ref={inputRef}
         className="combo-input"
         style={{ width }}
         value={display}
         placeholder={placeholder}
         autoComplete="off"
-        onFocus={() => setOpen(true)}
-        onClick={() => setOpen(true)}
-        onChange={(e) => { setQuery(e.target.value); setTyping(true); setOpen(true) }}
+        onFocus={openList}
+        onClick={openList}
+        onChange={(e) => { setQuery(e.target.value); setTyping(true); openList() }}
         onKeyDown={(e) => {
           if (e.key === 'Escape') { setOpen(false); setTyping(false); setQuery('') }
           else if (e.key === 'Enter') {
@@ -69,8 +98,8 @@ export default function Combobox({ items, value, onSelect, allLabel = 'All', pla
         }}
       />
       <i className="fa-solid fa-chevron-down combo-caret" />
-      {open && (
-        <div className="combo-list">
+      {open && pos && (
+        <div className="combo-list" style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width, right: 'auto' }}>
           <div className="combo-opt combo-all" onMouseDown={(e) => { e.preventDefault(); choose('', '') }}>
             <i className="fa-solid fa-xmark combo-all-icon" />
             <span>{allLabel}</span>

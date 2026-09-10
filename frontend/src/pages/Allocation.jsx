@@ -12,7 +12,7 @@ function allocPill(v) {
   return <span className={`pill ${cls}`}>{v}%</span>
 }
 
-function SavedRow({ a, onEdit, onDelete }) {
+function SavedRow({ a, onEdit, onCopy, onDelete }) {
   return (
     <tr>
       <td>{a.employee}</td>
@@ -22,6 +22,7 @@ function SavedRow({ a, onEdit, onDelete }) {
       <td>{allocPill(a.allocation)}</td>
       <td className="col-actions">
         <button className="row-btn edit" title="Edit" onClick={() => onEdit(a.id)}><i className="fa-solid fa-pen" /></button>
+        <button className="row-btn copy" title="Copy to a new allocation" onClick={() => onCopy(a)}><i className="fa-solid fa-copy" /></button>
         <button className="row-btn del" title="Delete" onClick={() => onDelete(a.id)}><i className="fa-solid fa-trash-can" /></button>
       </td>
     </tr>
@@ -94,6 +95,15 @@ export default function Allocation() {
   const [monthFilter, setMonthFilter] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [showDraft, setShowDraft] = useState(false)
+  const [draftSeed, setDraftSeed] = useState(null)
+  const [draftKey, setDraftKey] = useState(0)
+
+  function openDraft(seed) {
+    setDraftSeed(seed)
+    setDraftKey((k) => k + 1)
+    setEditingId(null)
+    setShowDraft(true)
+  }
 
   const [projects, setProjects] = useState([])
   const [projTotal, setProjTotal] = useState(null)
@@ -231,7 +241,7 @@ export default function Allocation() {
           <h1>Project Allocation <span className="tag">Monthly</span></h1>
           <p className="subtitle">Select a reporting manager to load their reportees, then allocate them to projects.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowDraft(true)}>
+        <button className="btn btn-primary" onClick={() => openDraft(null)}>
           <i className="fa-solid fa-plus" /> Add Allocation
         </button>
       </div>
@@ -275,7 +285,12 @@ export default function Allocation() {
 
                 {showDraft && (
                   <AllocationRow
+                    key={`draft-${draftKey}`}
                     mode="draft"
+                    employee={draftSeed?.employee || ''}
+                    pid={draftSeed?.pid || ''}
+                    title={draftSeed?.title || ''}
+                    alloc={draftSeed?.alloc ?? 100}
                     empSource={empSource}
                     projSource={projSource}
                     onActivate={onActivate}
@@ -309,7 +324,7 @@ export default function Allocation() {
                       onCancel={() => setEditingId(null)}
                     />
                   ) : (
-                    <SavedRow key={a.id} a={a} onEdit={setEditingId} onDelete={deleteRow} />
+                    <SavedRow key={a.id} a={a} onEdit={setEditingId} onCopy={(row) => openDraft({ employee: row.employee, pid: row.project_id, title: row.project_title, alloc: row.allocation })} onDelete={deleteRow} />
                   )
                 ))}
 

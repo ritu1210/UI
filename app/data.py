@@ -40,6 +40,9 @@ class Project:
     bu: str
     cluster: str
     current_il: str
+    is_active: str = ""
+    funnel_total: float = 0.0
+    actual_total: float = 0.0
 
 
 @dataclass
@@ -56,6 +59,23 @@ def _clean(value: str | None) -> str:
     if value is None:
         return ""
     return " ".join(value.split()).strip()
+
+
+def _euro(value: str | None) -> float:
+    """Parse a euro cell like '€ 314,535.00' into a float (0.0 if empty/invalid)."""
+    if not value:
+        return 0.0
+    s = "".join(ch for ch in value if ch.isdigit() or ch in ".-")
+    if s in ("", "-", ".", "-."):
+        return 0.0
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+_FUNNEL_EURO_COLS = [f"{y} Funnel (Euro)" for y in range(2025, 2029)]
+_ACTUAL_EURO_COLS = [f"{y} Actual (Euro)" for y in range(2025, 2029)]
 
 
 @lru_cache(maxsize=1)
@@ -111,6 +131,9 @@ def load_projects() -> list[Project]:
                     bu=_clean(row.get("BU")),
                     cluster=_clean(row.get("Cluster")),
                     current_il=_clean(row.get("Current IL")),
+                    is_active=_clean(row.get("Is Active")),
+                    funnel_total=sum(_euro(row.get(c)) for c in _FUNNEL_EURO_COLS),
+                    actual_total=sum(_euro(row.get(c)) for c in _ACTUAL_EURO_COLS),
                 )
             )
     projects.sort(key=lambda p: p.project_id.lower())
@@ -199,9 +222,91 @@ def append_project(values: dict[str, str]) -> Project:
     return project_index()[values["SMRS / Project ID"]]
 
 
+def funnel_row(project_id: str) -> dict[str, str] | None:
+    """Return the raw CSV row (all columns) for a funnel project id."""
+    with config.FUNNEL_FILE.open(encoding="utf-8-sig", newline="") as fh:
+        for row in csv.DictReader(fh):
+            if _clean(row.get("SMRS / Project ID")) == project_id:
+                return row
+    return None
+
+
+def update_project(project_id: str, updates: dict[str, str]) -> Project | None:
+    """Update columns of an existing funnel project (matched by id) and re-cache."""
+    path = config.FUNNEL_FILE
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
+
+    found = False
+    for r in rows:
+        if _clean(r.get("SMRS / Project ID")) == project_id:
+            for col, val in updates.items():
+                if col in fieldnames:
+                    r[col] = _clean(val)
+            found = True
+    if not found:
+        return None
+
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    load_projects.cache_clear()
+    project_index.cache_clear()
+    return project_index().get(project_id)
+
+
 def append_employee(values: dict[str, str]) -> Employee:
     """Append a headcount employee and refresh the employee caches."""
     _append_csv_row(config.HEADCOUNT_FILE, values)
     load_employees.cache_clear()
     employee_index.cache_clear()
     return employee_index()[values["Employee Name (HC)"]]
+
+
+def _employee_matches(row: dict, key: str) -> bool:
+    """Match a headcount row by email (preferred, unique) or by name."""
+    if "@" in key:
+        return _clean(row.get("Email ID")).lower() == key.lower()
+    return _clean(row.get("Employee Name (HC)")) == key
+
+
+def employee_row(key: str) -> dict[str, str] | None:
+    """Return the raw CSV row (all columns) for an employee (by email or name)."""
+    with config.HEADCOUNT_FILE.open(encoding="utf-8-sig", newline="") as fh:
+        for row in csv.DictReader(fh):
+            if _employee_matches(row, key):
+                return row
+    return None
+
+
+def update_employee(key: str, updates: dict[str, str]) -> Employee | None:
+    """Update columns of an existing headcount row (matched by email or name) and re-cache."""
+    path = config.HEADCOUNT_FILE
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
+
+    matched_name = ""
+    for r in rows:
+        if _employee_matches(r, key):
+            for col, val in updates.items():
+                if col in fieldnames:
+                    r[col] = _clean(val)
+            matched_name = _clean(r.get("Employee Name (HC)"))
+            break
+    if not matched_name:
+        return None
+
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    load_employees.cache_clear()
+    employee_index.cache_clear()
+    return employee_index().get(matched_name)

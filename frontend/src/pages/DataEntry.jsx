@@ -1,22 +1,148 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../lib/api'
+import SuggestInput from '../components/SuggestInput'
+import SelectMenu from '../components/SelectMenu'
+import DatePicker from '../components/DatePicker'
 import { useToast } from '../context/ToastContext'
 
-const EMPTY_FUNNEL = {
-  project_id: '', title: '', bu: '', cluster: '', project_type: '',
-  commodity: '', current_il: '', director: '', spoc: '', program_manager: '',
-}
-const EMPTY_HC = {
-  name: '', email: '', job_title: '', job_grade: '', director: '',
-  reporting_manager: '', country: '', location: '', employment_type: '',
-  status: '', gender: '', start_date: '',
+// Maps a field's datalist id to the /api/meta key that supplies its suggestions.
+export const DL_META = {
+  'dl-ptypes': 'project_types', 'dl-bus': 'bus', 'dl-clusters': 'clusters',
+  'dl-commodities': 'commodities', 'dl-ils': 'current_ils', 'dl-directors': 'directors',
+  'dl-spocs': 'spocs', 'dl-pms': 'program_managers', 'dl-jobtitles': 'job_titles',
+  'dl-jobgrades': 'job_grades', 'dl-managers': 'reporting_managers', 'dl-countries': 'countries',
+  'dl-locations': 'locations', 'dl-emptypes': 'employment_types', 'dl-statuses': 'statuses',
 }
 
-function Field({ label, value, onChange, required, list, placeholder, full }) {
+// Business units grouped by cluster — selecting a cluster limits the BU choices.
+export const CLUSTER_BU = {
+  PH: ['GB', 'MCC', 'OHC'],
+  PD: ['DXR', 'MR', 'CT', 'US', 'US-Trans', 'IC', 'CT/AMI', 'DMS'],
+  IGT: ['IGT-D', 'IGT-MoS', 'IGT-S'],
+  CC: ['EC', 'HPM', 'PHM', 'SRC', 'AM&D', 'HRC'],
+}
+const FUNNEL_BUS = [...new Set(Object.values(CLUSTER_BU).flat())].sort()
+const WEEKS = Array.from({ length: 53 }, (_, i) => `WK${i + 1}`)
+
+// ---- Form definitions (data-driven so sections stay easy to extend) ----
+export const FUNNEL_SECTIONS = [
+  {
+    title: 'Project Details', icon: 'fa-diagram-project',
+    fields: [
+      { k: 'project_id', label: 'Project ID', required: true, placeholder: 'e.g. RfS 279000' },
+      { k: 'title', label: 'Project Title', required: true, placeholder: 'Short descriptive title', full: true },
+      { k: 'project_type', label: 'Project Type', list: 'dl-ptypes' },
+      { k: 'is_active', label: 'Is Active', options: ['Yes', 'No'] },
+      { k: 'cluster', label: 'Cluster', options: ['PH', 'PD', 'IGT', 'CC'], clears: ['bu'] },
+      { k: 'bu', label: 'Business Unit', optionsFn: (s) => CLUSTER_BU[s.cluster] || FUNNEL_BUS },
+      { k: 'commodity', label: 'Commodity', list: 'dl-commodities' },
+      { k: 'current_il', label: 'Current IL', list: 'dl-ils', required: true },
+      { k: 'il5_date', label: 'IL5 Date', type: 'date', required: true },
+      { k: 'parts_dual_sourced', label: '# Parts of Dual Sourced', placeholder: 'e.g. 3' },
+    ],
+  },
+  {
+    title: 'Ownership', icon: 'fa-user-tie',
+    fields: [
+      { k: 'director', label: 'Director', list: 'dl-directors' },
+      { k: 'spoc', label: 'STET SPOC', list: 'dl-spocs' },
+      { k: 'program_manager', label: 'Program Manager', list: 'dl-pms' },
+    ],
+  },
+  {
+    title: 'Savings & Financials', icon: 'fa-coins',
+    showIf: (s) => (s.project_type || '').toLowerCase() === 'productivity',
+    fields: [
+      { k: 'aos_impact', label: 'AOS Impact (€)', placeholder: '0' },
+      { k: 'qn_reduction', label: 'QN Reduction Impact (€)', placeholder: '0' },
+      { k: 'procurement_type', label: 'Procurement Type', options: ['PROCUREMENT', 'TCO', 'N/A'] },
+      { k: 'savings_type', label: 'Savings Type', options: ['TCO', 'CONCEPT', 'SOURCING', 'NEGO', 'NON_12NC', 'NPP', 'CONQ', 'FCP & PPV'] },
+      { k: 'funnel_2025', label: '2025 Funnel (€)', placeholder: '0' },
+      { k: 'actual_2025', label: '2025 Actual (€)', placeholder: '0' },
+      { k: 'funnel_2026', label: '2026 Funnel (€)', placeholder: '0' },
+      { k: 'actual_2026', label: '2026 Actual (€)', placeholder: '0' },
+      { k: 'funnel_2027', label: '2027 Funnel (€)', placeholder: '0' },
+      { k: 'actual_2027', label: '2027 Actual (€)', placeholder: '0' },
+      { k: 'funnel_2028', label: '2028 Funnel (€)', placeholder: '0' },
+      { k: 'actual_2028', label: '2028 Actual (€)', placeholder: '0' },
+    ],
+  },
+  {
+    title: 'Status & Notes', icon: 'fa-clipboard-check',
+    fields: [
+      { k: 'impacted_parts', label: 'Impacted Parts Added?', options: ['YES', 'NO', 'N/A'] },
+      { k: 'sqe_resources', label: 'STET SQE Resources Applied?', options: ['YES', 'NO', 'N/A'] },
+      { k: 'week', label: 'Week', options: WEEKS },
+      { k: 'comments', label: 'Comments / Challenges', textarea: true, full: true },
+    ],
+  },
+]
+
+export const HEADCOUNT_SECTIONS = [
+  {
+    title: 'Identity', icon: 'fa-id-card',
+    fields: [
+      { k: 'name', label: 'Employee Name', required: true, placeholder: 'Full name' },
+      { k: 'email', label: 'Email ID', required: true, placeholder: 'name@philips.com' },
+    ],
+  },
+  {
+    title: 'Role', icon: 'fa-briefcase',
+    fields: [
+      { k: 'job_title', label: 'Job Title', list: 'dl-jobtitles' },
+      { k: 'job_grade', label: 'Job Grade', list: 'dl-jobgrades' },
+      { k: 'employment_type', label: 'Employment Type', list: 'dl-emptypes' },
+      { k: 'status', label: 'Employment Status', list: 'dl-statuses' },
+      { k: 'start_date', label: 'Start Date', placeholder: 'M/D/YYYY' },
+      { k: 'gender', label: 'Diversity', placeholder: 'e.g. Male / Female' },
+    ],
+  },
+  {
+    title: 'Reporting', icon: 'fa-sitemap',
+    fields: [
+      { k: 'reporting_manager', label: 'Reporting Manager (email)', list: 'dl-managers', placeholder: 'manager@philips.com' },
+      { k: 'director', label: 'Director', list: 'dl-directors' },
+    ],
+  },
+  {
+    title: 'Location', icon: 'fa-location-dot',
+    fields: [
+      { k: 'country', label: 'Location Country', list: 'dl-countries' },
+      { k: 'location', label: 'Job Location', list: 'dl-locations' },
+    ],
+  },
+]
+
+// Fields kept after a save when "keep shared fields" is on (fast batch entry).
+const FUNNEL_SHARED = ['director', 'spoc', 'program_manager', 'bu', 'cluster', 'commodity', 'project_type', 'current_il', 'week']
+const HC_SHARED = ['director', 'reporting_manager', 'country', 'location', 'employment_type', 'status', 'job_grade']
+
+function emptyState(sections) {
+  const s = {}
+  sections.forEach((sec) => sec.fields.forEach((f) => { s[f.k] = '' }))
+  return s
+}
+
+const EMPTY_FUNNEL = { ...emptyState(FUNNEL_SECTIONS), is_active: 'Yes' }
+const EMPTY_HC = emptyState(HEADCOUNT_SECTIONS)
+
+export function FormField({ cfg, value, onChange, suggestions, state }) {
+  const options = cfg.optionsFn ? cfg.optionsFn(state || {}) : cfg.options
+  const inner = cfg.textarea ? (
+    <textarea rows={3} value={value} placeholder={cfg.placeholder} onChange={(e) => onChange(e.target.value)} />
+  ) : options ? (
+    <SelectMenu value={value} onChange={onChange} options={options} />
+  ) : cfg.type === 'date' ? (
+    <DatePicker value={value} onChange={onChange} placeholder={cfg.placeholder || 'Select date'} />
+  ) : cfg.list ? (
+    <SuggestInput value={value} onChange={onChange} options={suggestions || []} placeholder={cfg.placeholder} />
+  ) : (
+    <input type="text" value={value} placeholder={cfg.placeholder} autoComplete="off" onChange={(e) => onChange(e.target.value)} />
+  )
   return (
-    <div className={`form-field${full ? ' form-full' : ''}`}>
-      <label>{label}{required && <span className="req">*</span>}</label>
-      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} list={list} placeholder={placeholder} autoComplete="off" />
+    <div className={`form-field${cfg.full ? ' form-full' : ''}`}>
+      <label>{cfg.label}{cfg.required && <span className="req">*</span>}</label>
+      {inner}
     </div>
   )
 }
@@ -29,35 +155,54 @@ export default function DataEntry() {
   const [hc, setHc] = useState(EMPTY_HC)
   const [saving, setSaving] = useState(false)
   const [recent, setRecent] = useState([])
+  const [keepShared, setKeepShared] = useState(true)
 
   useEffect(() => {
     apiFetch('/api/meta').then(setMeta).catch((e) => showToast(e.message, true))
   }, [showToast])
 
-  const setF = (k) => (v) => setFunnel((s) => ({ ...s, [k]: v }))
-  const setH = (k) => (v) => setHc((s) => ({ ...s, [k]: v }))
+  const sections = tab === 'funnel' ? FUNNEL_SECTIONS : HEADCOUNT_SECTIONS
+  const state = tab === 'funnel' ? funnel : hc
+  const setState = tab === 'funnel' ? setFunnel : setHc
+  const set = (k) => (v) => setState((s) => ({ ...s, [k]: v }))
 
-  async function submitFunnel(e) {
-    e.preventDefault()
-    if (!funnel.project_id.trim() || !funnel.title.trim()) return showToast('Project ID and Title are required', true)
-    setSaving(true)
-    try {
-      const p = await apiFetch('/api/funnel', { method: 'POST', body: JSON.stringify(funnel) })
-      showToast('Funnel project added')
-      setRecent((r) => [{ type: 'Funnel', icon: 'fa-diagram-project', label: `${p.project_id} — ${p.title}` }, ...r].slice(0, 8))
-      setFunnel(EMPTY_FUNNEL)
-    } catch (err) { showToast(err.message, true) } finally { setSaving(false) }
+  const filledCount = useMemo(() => Object.values(state).filter((v) => String(v).trim()).length, [state])
+  const totalCount = useMemo(() => Object.keys(state).length, [state])
+
+  function resetAfterSave() {
+    const empty = tab === 'funnel' ? EMPTY_FUNNEL : EMPTY_HC
+    const shared = tab === 'funnel' ? FUNNEL_SHARED : HC_SHARED
+    if (!keepShared) return setState(empty)
+    setState((s) => {
+      const next = { ...empty }
+      shared.forEach((k) => { if (s[k]) next[k] = s[k] })
+      return next
+    })
   }
 
-  async function submitHc(e) {
+  async function submit(e) {
     e.preventDefault()
-    if (!hc.name.trim() || !hc.email.trim()) return showToast('Employee Name and Email are required', true)
+    // Only fields currently visible (respecting showIf) are validated and saved.
+    const visibleFields = sections.filter((s) => !s.showIf || s.showIf(state)).flatMap((s) => s.fields).filter((f) => !f.showIf || f.showIf(state))
+    const missing = visibleFields.find((f) => f.required && !String(state[f.k] || '').trim())
+    if (missing) return showToast(`${missing.label} is required`, true)
+
+    const visibleKeys = new Set(visibleFields.map((f) => f.k))
+    const payload = {}
+    Object.keys(state).forEach((k) => { payload[k] = visibleKeys.has(k) ? state[k] : '' })
+
     setSaving(true)
     try {
-      const emp = await apiFetch('/api/headcount', { method: 'POST', body: JSON.stringify(hc) })
-      showToast('Headcount employee added')
-      setRecent((r) => [{ type: 'Headcount', icon: 'fa-user-plus', label: `${emp.name}${emp.job_title ? ' — ' + emp.job_title : ''}` }, ...r].slice(0, 8))
-      setHc(EMPTY_HC)
+      if (tab === 'funnel') {
+        const p = await apiFetch('/api/funnel', { method: 'POST', body: JSON.stringify(payload) })
+        showToast('Funnel project added')
+        setRecent((r) => [{ type: 'Funnel', icon: 'fa-diagram-project', label: `${p.project_id} — ${p.title}` }, ...r].slice(0, 12))
+      } else {
+        const emp = await apiFetch('/api/headcount', { method: 'POST', body: JSON.stringify(payload) })
+        showToast('Headcount employee added')
+        setRecent((r) => [{ type: 'Headcount', icon: 'fa-user-plus', label: `${emp.name}${emp.job_title ? ' — ' + emp.job_title : ''}` }, ...r].slice(0, 12))
+      }
+      resetAfterSave()
     } catch (err) { showToast(err.message, true) } finally { setSaving(false) }
   }
 
@@ -78,95 +223,65 @@ export default function DataEntry() {
       </div>
 
       <div className="grid grid-alloc">
-        <section className="card">
-          {tab === 'funnel' ? (
-            <form onSubmit={submitFunnel}>
-              <div className="card-head"><i className="fa-solid fa-diagram-project" /><h2>New Funnel Project</h2></div>
-              <div className="form-grid">
-                <Field label="Project ID" value={funnel.project_id} onChange={setF('project_id')} required placeholder="e.g. RfS 279000" />
-                <Field label="Project Title" value={funnel.title} onChange={setF('title')} required placeholder="Short descriptive title" />
-                <Field label="Business Unit" value={funnel.bu} onChange={setF('bu')} list="dl-bus" />
-                <Field label="Cluster" value={funnel.cluster} onChange={setF('cluster')} list="dl-clusters" />
-                <Field label="Project Type" value={funnel.project_type} onChange={setF('project_type')} list="dl-ptypes" />
-                <Field label="Commodity" value={funnel.commodity} onChange={setF('commodity')} list="dl-commodities" />
-                <Field label="Current IL" value={funnel.current_il} onChange={setF('current_il')} list="dl-ils" />
-                <Field label="Director" value={funnel.director} onChange={setF('director')} list="dl-directors" />
-                <Field label="STET SPOC" value={funnel.spoc} onChange={setF('spoc')} list="dl-spocs" />
-                <Field label="Program Manager" value={funnel.program_manager} onChange={setF('program_manager')} list="dl-pms" />
+        <section className="card entry-card">
+          <form onSubmit={submit}>
+            {sections.filter((sec) => !sec.showIf || sec.showIf(state)).map((sec) => (
+              <div className="form-section" key={sec.title}>
+                <div className="form-section-head">
+                  <i className={`fa-solid ${sec.icon}`} /> {sec.title}
+                </div>
+                <div className="form-grid-3">
+                  {sec.fields.filter((f) => !f.showIf || f.showIf(state)).map((f) => (
+                    <FormField key={f.k} cfg={f} value={state[f.k]} state={state}
+                      onChange={(v) => setState((s) => { const n = { ...s, [f.k]: v }; (f.clears || []).forEach((k) => { n[k] = '' }); return n })}
+                      suggestions={f.list ? (meta[DL_META[f.list]] || []) : null} />
+                  ))}
+                </div>
               </div>
+            ))}
+
+            <div className="form-sticky">
+              <label className="keep-toggle">
+                <input type="checkbox" checked={keepShared} onChange={(e) => setKeepShared(e.target.checked)} />
+                Keep shared fields for next entry
+              </label>
+              <span className="fill-hint">{filledCount}/{totalCount} filled</span>
               <div className="form-actions">
+                <button className="btn btn-ghost" type="button" onClick={() => setState(tab === 'funnel' ? EMPTY_FUNNEL : EMPTY_HC)}>Clear</button>
                 <button className="btn btn-primary" type="submit" disabled={saving}>
-                  <i className="fa-solid fa-floppy-disk" /> {saving ? 'Saving…' : 'Add to Funnel'}
+                  <i className="fa-solid fa-floppy-disk" /> {saving ? 'Saving…' : tab === 'funnel' ? 'Add to Funnel' : 'Add to Headcount'}
                 </button>
-                <button className="btn btn-ghost" type="button" onClick={() => setFunnel(EMPTY_FUNNEL)}>Clear</button>
               </div>
-            </form>
-          ) : (
-            <form onSubmit={submitHc}>
-              <div className="card-head"><i className="fa-solid fa-user-plus" /><h2>New Headcount Record</h2></div>
-              <div className="form-grid">
-                <Field label="Employee Name" value={hc.name} onChange={setH('name')} required placeholder="Full name" />
-                <Field label="Email ID" value={hc.email} onChange={setH('email')} required placeholder="name@philips.com" />
-                <Field label="Job Title" value={hc.job_title} onChange={setH('job_title')} list="dl-jobtitles" />
-                <Field label="Job Grade" value={hc.job_grade} onChange={setH('job_grade')} list="dl-jobgrades" />
-                <Field label="Reporting Manager (email)" value={hc.reporting_manager} onChange={setH('reporting_manager')} list="dl-managers" placeholder="manager@philips.com" />
-                <Field label="Director" value={hc.director} onChange={setH('director')} list="dl-directors" />
-                <Field label="Location Country" value={hc.country} onChange={setH('country')} list="dl-countries" />
-                <Field label="Job Location" value={hc.location} onChange={setH('location')} list="dl-locations" />
-                <Field label="Employment Type" value={hc.employment_type} onChange={setH('employment_type')} list="dl-emptypes" />
-                <Field label="Employment Status" value={hc.status} onChange={setH('status')} list="dl-statuses" />
-                <Field label="Diversity" value={hc.gender} onChange={setH('gender')} placeholder="e.g. Male / Female" />
-                <Field label="Start Date" value={hc.start_date} onChange={setH('start_date')} placeholder="M/D/YYYY" />
-              </div>
-              <div className="form-actions">
-                <button className="btn btn-primary" type="submit" disabled={saving}>
-                  <i className="fa-solid fa-floppy-disk" /> {saving ? 'Saving…' : 'Add to Headcount'}
-                </button>
-                <button className="btn btn-ghost" type="button" onClick={() => setHc(EMPTY_HC)}>Clear</button>
-              </div>
-            </form>
-          )}
+            </div>
+          </form>
         </section>
 
-        <aside className="card card-accent">
+        <aside className="card card-accent entry-side">
           <div className="card-head"><i className="fa-solid fa-clock-rotate-left" /><h2>Recently Added</h2></div>
           {recent.length === 0 ? (
             <p className="muted">Nothing added yet this session. New entries appear here and are saved to the source files right away.</p>
           ) : (
-            <ul className="recent-list">
-              {recent.map((r, i) => (
-                <li key={i}>
-                  <i className={`fa-solid ${r.icon}`} />
-                  <div>
-                    <span className="recent-type">{r.type}</span>
-                    <span className="recent-label">{r.label}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <>
+              <span className="recent-count">{recent.length} this session</span>
+              <ul className="recent-list">
+                {recent.map((r, i) => (
+                  <li key={i}>
+                    <i className={`fa-solid ${r.icon}`} />
+                    <div>
+                      <span className="recent-type">{r.type}</span>
+                      <span className="recent-label">{r.label}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
-          <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
-            <i className="fa-solid fa-circle-info" /> Entries are appended to the STET Funnel / Headcount CSVs and reflected across the dashboards immediately.
-          </p>
+          <div className="entry-tip">
+            <i className="fa-solid fa-lightbulb" />
+            <span>Keep <strong>shared fields</strong> on to add several projects for the same BU / Director without retyping. Only <span className="req">*</span> fields are required.</span>
+          </div>
         </aside>
       </div>
-
-      {/* Suggestion lists sourced from existing data */}
-      <datalist id="dl-bus">{(meta.bus || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-clusters">{(meta.clusters || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-ptypes">{(meta.project_types || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-commodities">{(meta.commodities || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-ils">{(meta.current_ils || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-directors">{(meta.directors || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-spocs">{(meta.spocs || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-pms">{(meta.program_managers || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-jobtitles">{(meta.job_titles || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-jobgrades">{(meta.job_grades || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-managers">{(meta.reporting_managers || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-countries">{(meta.countries || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-locations">{(meta.locations || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-emptypes">{(meta.employment_types || []).map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="dl-statuses">{(meta.statuses || []).map((v) => <option key={v} value={v} />)}</datalist>
     </>
   )
 }

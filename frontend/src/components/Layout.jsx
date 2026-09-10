@@ -5,7 +5,8 @@ import { APP_NAME, APP_TAGLINE, CURRENT_USER, userInitials } from '../lib/consta
 const NAV = [
   { to: '/', icon: 'fa-house', label: 'Home', tip: 'Home', end: true },
   { to: '/allocation', icon: 'fa-diagram-project', label: 'Allocation', tip: 'Project Allocation' },
-  { to: '/data-entry', icon: 'fa-file-circle-plus', label: 'Data Entry', tip: 'Add Funnel / Headcount Data' },
+  { to: '/manage-projects', icon: 'fa-layer-group', label: 'Projects', tip: 'Add / Manage Projects' },
+  { to: '/manage-people', icon: 'fa-user-group', label: 'Headcount', tip: 'Add / Manage Headcount' },
   { to: '/dashboard/user', icon: 'fa-user-gear', label: 'User', tip: 'User Dashboard' },
   { to: '/dashboard/people-leader', icon: 'fa-users', label: 'Leader', tip: 'People Leader Dashboard' },
   { to: '/dashboard/business-unit', icon: 'fa-building', label: 'Business Unit', tip: 'Business Unit Dashboard' },

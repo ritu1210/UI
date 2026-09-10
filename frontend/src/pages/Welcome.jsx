@@ -1,29 +1,74 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { APP_NAME, CURRENT_USER } from '../lib/constants'
+import { APP_NAME, APP_TAGLINE, CURRENT_USER } from '../lib/constants'
+import { apiFetch } from '../lib/api'
 
 const NAV_CARDS = [
   { to: '/allocation', icon: 'fa-diagram-project', title: 'Project Allocation', sub: 'Assign people to projects by month' },
-  { to: '/data-entry', icon: 'fa-file-circle-plus', title: 'Data Entry', sub: 'Add funnel & headcount records' },
-  { to: '/dashboard/user', icon: 'fa-user-gear', title: 'Allocation Dashboard', sub: 'User specific' },
-  { to: '/dashboard/people-leader', icon: 'fa-users', title: 'Allocation Dashboard', sub: 'People leader' },
-  { to: '/dashboard/business-unit', icon: 'fa-building', title: 'Allocation Dashboard', sub: 'Business unit' },
+  { to: '/manage-projects', icon: 'fa-layer-group', title: 'Projects', sub: 'Add & manage funnel projects' },
+  { to: '/manage-people', icon: 'fa-user-group', title: 'Headcount', sub: 'Add & manage employees' },
+  { to: '/dashboard/user', icon: 'fa-user-gear', title: 'User Dashboard', sub: 'Allocation by cluster, BU & type' },
+  { to: '/dashboard/people-leader', icon: 'fa-users', title: 'People Leader Dashboard', sub: 'Team utilization & bench risk' },
+  { to: '/dashboard/business-unit', icon: 'fa-building', title: 'Business Unit Dashboard', sub: 'Allocation across BUs' },
 ]
 
-const CONTACTS = [
-  ['Project Updates — US / CC', 'Ashwini Jibhkate'],
-  ['Project Updates — PD', 'Adrianna Davis'],
-  ['Project Updates — IGT / PH', 'Supriya Kumari'],
-  ['Headcount — US / CC / PH', 'Meenakshi Devi'],
-  ['Headcount — PD', 'Ming Zhu DI'],
-  ['Headcount — IGT', 'Asmita Marathe'],
+const STAT_META = [
+  { key: 'projects', label: 'Funnel Projects', icon: 'fa-diagram-project' },
+  { key: 'employees', label: 'Employees', icon: 'fa-user' },
+  { key: 'leaders', label: 'People Leaders', icon: 'fa-user-tie' },
+  { key: 'business_units', label: 'Business Units', icon: 'fa-building' },
+]
+
+const CONTACT_GROUPS = [
+  {
+    title: 'Funnel',
+    people: [
+      ['US / CC', 'Mohan Ahire'],
+      ['PD', 'Adrianna Davis'],
+      ['IGT / PH', 'Supriya Kumari'],
+    ],
+  },
+  {
+    title: 'Headcount',
+    people: [
+      ['US / CC / PH', 'Meenakshi Devi'],
+      ['PD', 'Ming Zhu DI'],
+      ['IGT', 'Lydia Joseph'],
+    ],
+  },
 ]
 
 export default function Welcome() {
+  const [stats, setStats] = useState(null)
+
+  useEffect(() => {
+    apiFetch('/api/stats').then(setStats).catch(() => {})
+  }, [])
+
   return (
     <>
-      <div className="page-heading">
-        <h1>Welcome to {APP_NAME}</h1>
-        <p className="subtitle">Track full-time employee resources and give people managers a clear view of their reportees.</p>
+      <section className="welcome-hero">
+        <div className="hero-text">
+          <span className="hero-eyebrow"><i className="fa-solid fa-bolt" /> {APP_NAME}</span>
+          <h1>{APP_TAGLINE}</h1>
+          <p>Track full-time employee allocations across projects, people leaders and business units — one clear place to plan, review and report.</p>
+          <div className="hero-actions">
+            <Link className="btn btn-primary" to="/allocation"><i className="fa-solid fa-diagram-project" /> Start Allocating</Link>
+            <Link className="btn btn-hero-ghost" to="/dashboard/people-leader"><i className="fa-solid fa-chart-line" /> View Dashboards</Link>
+          </div>
+        </div>
+      </section>
+
+      <div className="hero-stats">
+        {STAT_META.map((s) => (
+          <div className="hero-stat" key={s.key}>
+            <div className="hs-icon"><i className={`fa-solid ${s.icon}`} /></div>
+            <div>
+              <div className="hs-val">{stats ? stats[s.key].toLocaleString() : '—'}</div>
+              <div className="hs-label">{s.label}</div>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-2">
@@ -38,7 +83,7 @@ export default function Welcome() {
             people leaders and business units.
           </p>
 
-          <h3 className="section-label">Navigation</h3>
+          <h3 className="section-label">Quick Actions</h3>
           <div className="nav-cards">
             {NAV_CARDS.map((c) => (
               <Link key={c.to + c.sub} className="nav-card" to={c.to}>
@@ -59,15 +104,25 @@ export default function Welcome() {
           <button className="btn btn-outline"><i className="fa-solid fa-book" /> Open Guide</button>
 
           <h3 className="section-label">Support Contacts</h3>
-          <ul className="contact-list">
-            {CONTACTS.map(([role, name]) => (
-              <li key={role}>
-                <span className="contact-role">{role}</span>
-                <span className="contact-name">{name}</span>
-              </li>
+          <div className="contact-groups">
+            {CONTACT_GROUPS.map((g) => (
+              <div className="contact-group" key={g.title}>
+                <div className="contact-group-head">{g.title}</div>
+                <div className="contact-cards">
+                  {g.people.map(([role, name]) => (
+                    <div className="contact-row" key={role + name}>
+                      <span className="contact-name">{name}</span>
+                      <span className="region-tag">{role}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ))}
-          </ul>
-          <div className="tool-owner">Tool Owner — <strong>{CURRENT_USER}</strong></div>
+          </div>
+          <div className="tool-owner">
+            <span className="owner-label">Tool Owner</span>
+            <span className="owner-name">{CURRENT_USER}</span>
+          </div>
         </aside>
       </div>
     </>

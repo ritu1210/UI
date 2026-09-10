@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import data, store
+from . import config, data, store
 
 
 def _pretty_manager(email: str) -> str:
@@ -82,9 +83,106 @@ def get_projects(q: str | None = None, limit: int = 50):
             "cluster": p.cluster,
             "project_type": p.project_type,
             "spoc": p.spoc,
+            "current_il": p.current_il,
+            "is_active": p.is_active or "Yes",
         }
         for p in projects[:limit]
     ]
+
+
+@router.get("/projects/page")
+def get_projects_page(q: str | None = None, active: str | None = None, bu: str | None = None, spoc: str | None = None, page: int = 1, size: int = 25):
+    """Paginated project list for the SharePoint-style Manage Projects table."""
+    projects = data.load_projects()
+    if q:
+        needle = q.lower()
+        projects = [
+            p for p in projects
+            if needle in p.project_id.lower() or needle in p.title.lower()
+        ]
+    if active in ("yes", "no"):
+        want_active = active == "yes"
+        projects = [p for p in projects if ((p.is_active or "Yes").lower() != "no") == want_active]
+    if bu:
+        needle_bu = bu.lower()
+        projects = [p for p in projects if p.bu.lower() == needle_bu]
+    if spoc:
+        projects = [p for p in projects if p.spoc == spoc]
+
+    total = len(projects)
+    size = max(1, min(size, 200))
+    page = max(1, page)
+    start = (page - 1) * size
+    window = projects[start:start + size]
+    return {
+        "total": total,
+        "page": page,
+        "size": size,
+        "items": [
+            {
+                "project_id": p.project_id,
+                "title": p.title,
+                "bu": p.bu,
+                "cluster": p.cluster,
+                "project_type": p.project_type,
+                "current_il": p.current_il,
+                "is_active": p.is_active or "Yes",
+                "spoc": p.spoc,
+                "funnel_total": p.funnel_total,
+                "actual_total": p.actual_total,
+            }
+            for p in window
+        ],
+    }
+
+
+@router.get("/projects/summary")
+def get_projects_summary(q: str | None = None, active: str | None = None, bu: str | None = None, spoc: str | None = None):
+    """Totals and savings for the current filter set, plus per-BU / per-SPOC counts for the filters."""
+    projects = data.load_projects()
+
+    # Dropdown counts respect search + status (but not the BU/SPOC selection) so the filters stay useful.
+    scoped = projects
+    if q:
+        needle = q.lower()
+        scoped = [p for p in scoped if needle in p.project_id.lower() or needle in p.title.lower()]
+    if active in ("yes", "no"):
+        want_active = active == "yes"
+        scoped = [p for p in scoped if ((p.is_active or "Yes").lower() != "no") == want_active]
+
+    bu_variants: dict[str, Counter] = defaultdict(Counter)
+    spoc_counts: dict[str, int] = defaultdict(int)
+    for p in scoped:
+        if p.bu:
+            bu_variants[p.bu.lower()][p.bu] += 1
+        if p.spoc:
+            spoc_counts[p.spoc] += 1
+    # Merge BU casing variants (DXR / DxR) and drop one-off junk entries.
+    bus = []
+    for variants in bu_variants.values():
+        total = sum(variants.values())
+        if total <= 1:
+            continue
+        bus.append({"bu": variants.most_common(1)[0][0], "count": total})
+    bus.sort(key=lambda x: x["bu"].lower())
+    spocs = sorted(({"spoc": name, "count": c} for name, c in spoc_counts.items()), key=lambda x: x["spoc"].lower())
+
+    filtered = scoped
+    if bu:
+        needle_bu = bu.lower()
+        filtered = [p for p in filtered if p.bu.lower() == needle_bu]
+    if spoc:
+        filtered = [p for p in filtered if p.spoc == spoc]
+    active_count = sum(1 for p in filtered if (p.is_active or "Yes").lower() != "no")
+    return {
+        "total": len(filtered),
+        "active": active_count,
+        "inactive": len(filtered) - active_count,
+        "funnel_total": sum(p.funnel_total for p in filtered),
+        "actual_total": sum(p.actual_total for p in filtered),
+        "bus": bus,
+        "spocs": spocs,
+    }
 
 
 @router.get("/managers")
@@ -257,10 +355,21 @@ def dashboard_people_leader(month: str | None = None, manager: str | None = None
     # Total booked % and project count per (employee, month).
     util_by_emp: dict[tuple[str, str], float] = defaultdict(float)
     projects_in_month: dict[str, int] = defaultdict(int)
+    allocs_in_month: dict[str, list] = defaultdict(list)
+    proj_index = data.project_index()
     for a in store.list_all():
         util_by_emp[(a.employee, a.month)] += a.allocation
         if a.month == sel_month:
             projects_in_month[a.employee] += 1
+            p = proj_index.get(a.project_id)
+            allocs_in_month[a.employee].append({
+                "project_id": a.project_id,
+                "project_title": a.project_title,
+                "allocation": a.allocation,
+                "current_il": p.current_il if p else "",
+                "bu": p.bu if p else "",
+                "project_type": p.project_type if p else "",
+            })
 
     # Reportees grouped under their reporting manager (headcount from HC list).
     teams: dict[str, list] = defaultdict(list)
@@ -284,6 +393,8 @@ def dashboard_people_leader(month: str | None = None, manager: str | None = None
                 "util": round(u, 1),
                 "projects": projects_in_month.get(e.name, 0),
                 "status": _band(u),
+                "employment_status": e.status,
+                "allocations": sorted(allocs_in_month.get(e.name, []), key=lambda x: x["allocation"], reverse=True),
             })
         by_reportee.sort(key=lambda r: (r["util"], r["name"].lower()))
         total = len(members)
@@ -422,14 +533,33 @@ def dashboard_reportees_by_status(status: str, month: str | None = None, manager
 FUNNEL_COLUMNS = {
     "project_id": "SMRS / Project ID",
     "title": "STET Funnel Project Title",
+    "project_type": "Project Type (PRODUCTIVITY, AOS, LCM, NPI, CART PDC, TEST ENG, CONQ, IGM)",
+    "bu": "BU",
+    "cluster": "Cluster",
+    "commodity": "Commodity",
+    "current_il": "Current IL",
+    "il5_date": "IL5 Date",
+    "is_active": "Is Active",
+    "parts_dual_sourced": "%23 Parts of Dual Sourced",
     "director": "Director",
     "spoc": "STET SPOC",
     "program_manager": "Program Manager",
-    "project_type": "Project Type (PRODUCTIVITY, AOS, LCM, NPI, CART PDC, TEST ENG, CONQ, IGM)",
-    "commodity": "Commodity",
-    "bu": "BU",
-    "cluster": "Cluster",
-    "current_il": "Current IL",
+    "aos_impact": "AOS Impact  (Enter €0 if not AOS Project)",
+    "qn_reduction": "QN Reduction Impact (Enter €0 if not CONQ Project)",
+    "procurement_type": "Procurement Type (PROCUREMENT, TCO, N/A)",
+    "savings_type": "Savings Type (TCO, CONCEPT, SOURCING, NEGO, NON_12NC, NPP, CONQ, FCP & PPV)",
+    "funnel_2025": "2025 Funnel (Euro)",
+    "actual_2025": "2025 Actual (Euro)",
+    "funnel_2026": "2026 Funnel (Euro)",
+    "actual_2026": "2026 Actual (Euro)",
+    "funnel_2027": "2027 Funnel (Euro)",
+    "actual_2027": "2027 Actual (Euro)",
+    "funnel_2028": "2028 Funnel (Euro)",
+    "actual_2028": "2028 Actual (Euro)",
+    "impacted_parts": "Impacted Parts Added? (YES_NO_N/A) Needs to be YES or N/A for all IL5 Projects",
+    "sqe_resources": "Are Any STET SQE Resources Applied to Project? (YES_NO_N/A)",
+    "week": "Week",
+    "comments": "Comments / Challenges",
 }
 
 HEADCOUNT_COLUMNS = {
@@ -451,14 +581,33 @@ HEADCOUNT_COLUMNS = {
 class FunnelIn(BaseModel):
     project_id: str
     title: str
+    project_type: str = ""
+    bu: str = ""
+    cluster: str = ""
+    commodity: str = ""
+    current_il: str = ""
+    il5_date: str = ""
+    is_active: str = "Yes"
+    parts_dual_sourced: str = ""
     director: str = ""
     spoc: str = ""
     program_manager: str = ""
-    project_type: str = ""
-    commodity: str = ""
-    bu: str = ""
-    cluster: str = ""
-    current_il: str = ""
+    aos_impact: str = ""
+    qn_reduction: str = ""
+    procurement_type: str = ""
+    savings_type: str = ""
+    funnel_2025: str = ""
+    actual_2025: str = ""
+    funnel_2026: str = ""
+    actual_2026: str = ""
+    funnel_2027: str = ""
+    actual_2027: str = ""
+    funnel_2028: str = ""
+    actual_2028: str = ""
+    impacted_parts: str = ""
+    sqe_resources: str = ""
+    week: str = ""
+    comments: str = ""
 
 
 class HeadcountIn(BaseModel):
@@ -476,31 +625,65 @@ class HeadcountIn(BaseModel):
     employment_type: str = ""
 
 
+@router.get("/stats")
+def stats():
+    """High-level counts for the welcome page."""
+    projects = data.load_projects()
+    employees = data.load_employees()
+    managers = {e.reporting_manager.lower() for e in employees if e.reporting_manager}
+    bus = {p.bu for p in projects if p.bu}
+    return {
+        "projects": len(projects),
+        "employees": len(employees),
+        "leaders": len(managers),
+        "business_units": len(bus),
+    }
+
+
+# Values to drop from the data-entry suggestion lists (case-insensitive).
+META_BLOCK = {
+    "bus": {"all", "events", "funnel activities", "long leave", "l&a", "trainings"},
+    "clusters": {"funnel activities", "events", "long leave", "trainings", "l&a"},
+    "project_types": {"0"},
+    "commodities": {"all", "long leave", "n/a", "key component & electronics"},
+    "current_ils": {"ilr"},
+    "directors": {"vanish", "nishant", "dan", "nishant dan"},
+}
+
+
 @router.get("/meta")
 def meta():
-    """Distinct existing values used to power the data-entry form suggestions."""
+    """Distinct, de-duplicated values used to power the data-entry form suggestions."""
     projects = data.load_projects()
     employees = data.load_employees()
 
-    def distinct(values):
-        return sorted({v for v in values if v})
+    def clean(values, key=""):
+        block = META_BLOCK.get(key, set())
+        seen, out = set(), []
+        for v in sorted({x for x in values if x}):
+            norm = v.strip().lower()
+            if norm in block or norm in seen:
+                continue
+            seen.add(norm)
+            out.append(v)
+        return out
 
     return {
-        "bus": distinct(p.bu for p in projects),
-        "clusters": distinct(p.cluster for p in projects),
-        "project_types": distinct(p.project_type for p in projects),
-        "commodities": distinct(p.commodity for p in projects),
-        "current_ils": distinct(p.current_il for p in projects),
-        "spocs": distinct(p.spoc for p in projects),
-        "program_managers": distinct(p.program_manager for p in projects),
-        "directors": distinct([p.director for p in projects] + [e.director for e in employees]),
-        "countries": distinct(e.country for e in employees),
-        "locations": distinct(e.location for e in employees),
-        "job_titles": distinct(e.job_title for e in employees),
-        "job_grades": distinct(e.job_grade for e in employees),
-        "employment_types": distinct(e.employment_type for e in employees),
-        "statuses": distinct(e.status for e in employees),
-        "reporting_managers": distinct(e.reporting_manager for e in employees),
+        "bus": clean((p.bu for p in projects), "bus"),
+        "clusters": clean((p.cluster for p in projects), "clusters"),
+        "project_types": clean((p.project_type for p in projects), "project_types"),
+        "commodities": clean((p.commodity for p in projects), "commodities"),
+        "current_ils": clean((p.current_il for p in projects), "current_ils"),
+        "spocs": clean(p.spoc for p in projects),
+        "program_managers": clean(p.program_manager for p in projects),
+        "directors": clean([p.director for p in projects] + [e.director for e in employees], "directors"),
+        "countries": clean(e.country for e in employees),
+        "locations": clean(e.location for e in employees),
+        "job_titles": clean(e.job_title for e in employees),
+        "job_grades": clean(e.job_grade for e in employees),
+        "employment_types": clean(e.employment_type for e in employees),
+        "statuses": clean(e.status for e in employees),
+        "reporting_managers": clean(e.reporting_manager for e in employees),
     }
 
 
@@ -522,6 +705,74 @@ def add_funnel_project(payload: FunnelIn):
     }
 
 
+class FunnelUpdate(BaseModel):
+    project_id: str
+    title: str | None = None
+    project_type: str | None = None
+    bu: str | None = None
+    cluster: str | None = None
+    commodity: str | None = None
+    current_il: str | None = None
+    il5_date: str | None = None
+    is_active: str | None = None
+    parts_dual_sourced: str | None = None
+    director: str | None = None
+    spoc: str | None = None
+    program_manager: str | None = None
+    aos_impact: str | None = None
+    qn_reduction: str | None = None
+    procurement_type: str | None = None
+    savings_type: str | None = None
+    funnel_2025: str | None = None
+    actual_2025: str | None = None
+    funnel_2026: str | None = None
+    actual_2026: str | None = None
+    funnel_2027: str | None = None
+    actual_2027: str | None = None
+    funnel_2028: str | None = None
+    actual_2028: str | None = None
+    impacted_parts: str | None = None
+    sqe_resources: str | None = None
+    week: str | None = None
+    comments: str | None = None
+
+
+@router.get("/project")
+def get_project_detail(project_id: str):
+    """Full editable field set for a single funnel project (SharePoint-style edit)."""
+    row = data.funnel_row(project_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    fields = {k: " ".join((row.get(col) or "").split()).strip() for k, col in FUNNEL_COLUMNS.items()}
+    return {"project_id": project_id, "fields": fields}
+
+
+@router.patch("/funnel")
+def update_funnel_project(payload: FunnelUpdate):
+    pid = payload.project_id.strip()
+    if not data.project_index().get(pid):
+        raise HTTPException(status_code=404, detail="Project not found")
+    updates: dict[str, str] = {}
+    for k, v in payload.model_dump(exclude={"project_id"}, exclude_none=True).items():
+        col = FUNNEL_COLUMNS.get(k)
+        if col:
+            updates[col] = v
+    if not updates:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+    p = data.update_project(pid, updates)
+    if p is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {
+        "project_id": p.project_id,
+        "title": p.title,
+        "bu": p.bu,
+        "cluster": p.cluster,
+        "project_type": p.project_type,
+        "current_il": p.current_il,
+        "is_active": p.is_active,
+    }
+
+
 @router.post("/headcount", status_code=201)
 def add_headcount(payload: HeadcountIn):
     if not payload.name.strip() or not payload.email.strip():
@@ -537,6 +788,167 @@ def add_headcount(payload: HeadcountIn):
         "reporting_manager": employee.reporting_manager,
         "location": employee.location,
         "email": employee.email,
+    }
+
+
+@router.get("/funnel/export")
+def export_funnel():
+    """Download the full funnel data as a CSV file."""
+    return FileResponse(config.FUNNEL_FILE, media_type="text/csv", filename="STET_Funnel.csv")
+
+
+@router.get("/headcount/export")
+def export_headcount():
+    """Download the full headcount data as a CSV file."""
+    return FileResponse(config.HEADCOUNT_FILE, media_type="text/csv", filename="STET_Headcount.csv")
+
+
+def _emp_key(e) -> str:
+    return e.email or e.name
+
+
+@router.get("/employees/page")
+def get_employees_page(q: str | None = None, director: str | None = None, manager: str | None = None,
+                       country: str | None = None, page: int = 1, size: int = 25):
+    """Paginated headcount list for the Manage People table."""
+    employees = data.load_employees()
+    if q:
+        needle = q.lower()
+        employees = [e for e in employees if needle in e.name.lower() or (e.email and needle in e.email.lower())]
+    if director:
+        employees = [e for e in employees if e.director == director]
+    if manager:
+        employees = [e for e in employees if e.reporting_manager == manager]
+    if country:
+        employees = [e for e in employees if e.country == country]
+
+    total = len(employees)
+    size = max(1, min(size, 200))
+    page = max(1, page)
+    start = (page - 1) * size
+    window = employees[start:start + size]
+    return {
+        "total": total,
+        "page": page,
+        "size": size,
+        "items": [
+            {
+                "key": _emp_key(e),
+                "name": e.name,
+                "email": e.email,
+                "job_title": e.job_title,
+                "job_grade": e.job_grade,
+                "director": e.director,
+                "reporting_manager": e.reporting_manager,
+                "country": e.country,
+                "location": e.location,
+                "status": e.status,
+                "employment_type": e.employment_type,
+            }
+            for e in window
+        ],
+    }
+
+
+# Canonical people-leadership directors (the real four; raw data has junk entries).
+PEOPLE_DIRECTORS = ["Otto", "Phil", "Raj", "Tim"]
+
+
+@router.get("/employees/summary")
+def get_employees_summary(q: str | None = None, director: str | None = None, manager: str | None = None,
+                          country: str | None = None):
+    """Totals and filter option lists for the Manage People page."""
+    employees = data.load_employees()
+
+    scoped = employees
+    if q:
+        needle = q.lower()
+        scoped = [e for e in scoped if needle in e.name.lower() or (e.email and needle in e.email.lower())]
+
+    dir_counts: dict[str, int] = defaultdict(int)
+    mgr_counts: dict[str, int] = defaultdict(int)
+    country_counts: dict[str, int] = defaultdict(int)
+    for e in scoped:
+        if e.director:
+            dir_counts[e.director] += 1
+        if e.reporting_manager:
+            mgr_counts[e.reporting_manager] += 1
+        if e.country:
+            country_counts[e.country] += 1
+    directors = [{"value": d, "count": dir_counts.get(d, 0)} for d in PEOPLE_DIRECTORS]
+    managers = sorted(
+        ({"value": k, "label": _pretty_manager(k), "count": c} for k, c in mgr_counts.items()),
+        key=lambda x: x["label"].lower(),
+    )
+    countries = sorted(({"value": k, "count": c} for k, c in country_counts.items()), key=lambda x: x["value"].lower())
+
+    filtered = scoped
+    if director:
+        filtered = [e for e in filtered if e.director == director]
+    if manager:
+        filtered = [e for e in filtered if e.reporting_manager == manager]
+    if country:
+        filtered = [e for e in filtered if e.country == country]
+    return {
+        "total": len(filtered),
+        "managers_count": len({e.reporting_manager for e in filtered if e.reporting_manager}),
+        "directors_count": len(PEOPLE_DIRECTORS),
+        "countries_count": len({e.country for e in filtered if e.country}),
+        "directors": directors,
+        "managers": managers,
+        "countries": countries,
+    }
+
+
+@router.get("/employee")
+def get_employee_detail(key: str):
+    """Full editable field set for a single employee (by email or name)."""
+    row = data.employee_row(key)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    fields = {k: " ".join((row.get(col) or "").split()).strip() for k, col in HEADCOUNT_COLUMNS.items()}
+    return {"key": key, "fields": fields}
+
+
+class HeadcountUpdate(BaseModel):
+    key: str
+    name: str | None = None
+    email: str | None = None
+    job_title: str | None = None
+    job_grade: str | None = None
+    director: str | None = None
+    country: str | None = None
+    location: str | None = None
+    gender: str | None = None
+    status: str | None = None
+    start_date: str | None = None
+    reporting_manager: str | None = None
+    employment_type: str | None = None
+
+
+@router.patch("/headcount")
+def update_headcount(payload: HeadcountUpdate):
+    key = payload.key.strip()
+    if data.employee_row(key) is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    updates: dict[str, str] = {}
+    for k, v in payload.model_dump(exclude={"key"}, exclude_none=True).items():
+        col = HEADCOUNT_COLUMNS.get(k)
+        if col:
+            updates[col] = v
+    if not updates:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+    e = data.update_employee(key, updates)
+    if e is None:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    return {
+        "key": _emp_key(e),
+        "name": e.name,
+        "email": e.email,
+        "job_title": e.job_title,
+        "reporting_manager": e.reporting_manager,
+        "location": e.location,
+        "status": e.status,
     }
 
 
