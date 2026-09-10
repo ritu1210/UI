@@ -8,7 +8,6 @@ export default function Login() {
       <div className="auth-container">
         <div className="auth-brand">
           <div className="brand-content">
-            <img className="brand-logo" src="/philips-white.png" alt="Philips" />
             <h1>{APP_NAME}</h1>
             <p>{APP_TAGLINE} — track full-time employee resources and give people managers a clear view of their reportees.</p>
             <div className="brand-features">

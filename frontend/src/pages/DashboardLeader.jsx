@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import { UTIL_COLORS, utilBand } from '../lib/charts'
 import Combobox from '../components/Combobox'
@@ -17,12 +17,73 @@ function statCard(val, label, tone, onClick) {
       title={onClick ? 'Click to see who' : undefined}
     >
       <div className="stat-val">{val}</div>
-      <div className="stat-label">{label}{onClick && <i className="fa-solid fa-up-right-from-square stat-drill" />}</div>
+      <div className="stat-label">{label}</div>
+      {onClick && <span className="stat-more" aria-hidden="true"><i className="fa-solid fa-chevron-right" /></span>}
     </div>
   )
 }
 function utilPill(util) {
   return <span className={`pill u-${utilBand(util)}`}>{util}%</span>
+}
+
+// Merge duplicate allocations to the same project and sort by biggest share first.
+function mergeProjects(list) {
+  const map = new Map()
+  for (const p of list || []) {
+    const cur = map.get(p.project_id)
+    if (cur) cur.allocation += p.allocation
+    else map.set(p.project_id, { ...p })
+  }
+  return [...map.values()].sort((a, b) => b.allocation - a.allocation)
+}
+
+// Per-reportee project breakdown shown when a row is expanded.
+function ProjectBreakdown({ allocations, employmentStatus, month }) {
+  const merged = mergeProjects(allocations)
+  if (!merged.length) {
+    // "On bench" only reflects the headcount status (resigned / inactive);
+    // an active person with no allocation simply isn't planned for this month yet.
+    const inactive = /resign|inactive|left|terminat/i.test(employmentStatus || '')
+    if (inactive) {
+      return (
+        <div className="pb-empty inactive">
+          <span className="pb-ic"><i className="fa-solid fa-user-xmark" /></span>
+          <div>
+            <div className="pb-empty-title">{employmentStatus || 'Resigned'}</div>
+            <div className="pb-empty-sub">On the bench — no active allocation.</div>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div className="pb-empty">
+        <span className="pb-ic"><i className="fa-solid fa-calendar-day" /></span>
+        <div>
+          <div className="pb-empty-title">Not planned for {month} yet</div>
+          <div className="pb-empty-sub">No projects allocated to this reportee for {month}.</div>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="proj-breakdown">
+      {merged.map((p, i) => (
+        <div className="pb-item" key={p.project_id + i}>
+          <div className="pb-id">{p.project_id}</div>
+          <div className="pb-title" title={p.project_title}>{p.project_title || '—'}</div>
+          <div className="pb-tags">
+            {p.current_il && <span className="pb-tag il" title="Current IL">{p.current_il}</span>}
+            {p.bu && <span className="pb-tag" title="Business Unit">{p.bu}</span>}
+            {p.project_type && <span className="pb-tag ghost" title="Project Type">{p.project_type}</span>}
+          </div>
+          <div className="pb-alloc">
+            <div className="pb-bar"><span style={{ width: `${Math.min(p.allocation, 100)}%` }} /></div>
+            <span className="pb-pct">{p.allocation}%</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 const noAspect = { responsive: true, maintainAspectRatio: false }
@@ -47,6 +108,17 @@ export default function DashboardLeader() {
   const [drillData, setDrillData] = useState(null)
   const [drillLoading, setDrillLoading] = useState(false)
   const [drillQuery, setDrillQuery] = useState('')
+  const [expanded, setExpanded] = useState(() => new Set())
+
+  useEffect(() => { setExpanded(new Set()) }, [manager, month])
+
+  function toggleRow(i) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i); else next.add(i)
+      return next
+    })
+  }
 
   useEffect(() => {
     apiFetch('/api/managers').then(setManagers).catch((e) => showToast(e.message, true))
@@ -240,18 +312,26 @@ export default function DashboardLeader() {
           <table className="data-table">
             {isTeam ? (
               <>
-                <thead><tr><th>Reportee</th><th>Job Title</th><th>Projects</th><th>Utilization</th><th>Status</th></tr></thead>
+                <thead><tr><th className="exp-th" /><th>Reportee</th><th>Job Title</th><th>Projects</th><th>Utilization</th><th>Status</th></tr></thead>
                 <tbody>
                   {data.by_reportee.length === 0
-                    ? <tr className="empty-row"><td colSpan={5}>No reportees.</td></tr>
+                    ? <tr className="empty-row"><td colSpan={6}>No reportees.</td></tr>
                     : data.by_reportee.map((r, i) => (
-                      <tr key={`${r.name}-${i}`}>
-                        <td><strong>{r.name}</strong></td>
-                        <td>{r.job_title || '—'}</td>
-                        <td>{r.projects}</td>
-                        <td>{utilPill(r.util)}</td>
-                        <td><span className={`pill u-${r.status}`}>{STATUS_LABEL[r.status]}</span></td>
-                      </tr>
+                      <Fragment key={`${r.name}-${i}`}>
+                        <tr className={`expandable${expanded.has(i) ? ' open' : ''}`} onClick={() => toggleRow(i)}>
+                          <td className="exp-cell"><i className={`fa-solid fa-chevron-${expanded.has(i) ? 'down' : 'right'}`} /></td>
+                          <td><strong>{r.name}</strong></td>
+                          <td>{r.job_title || '—'}</td>
+                          <td>{r.projects}</td>
+                          <td>{utilPill(r.util)}</td>
+                          <td><span className={`pill u-${r.status}`}>{STATUS_LABEL[r.status]}</span></td>
+                        </tr>
+                        {expanded.has(i) && (
+                          <tr className="detail-row">
+                            <td colSpan={6}><ProjectBreakdown allocations={r.allocations} employmentStatus={r.employment_status} month={data.month} /></td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                 </tbody>
               </>
