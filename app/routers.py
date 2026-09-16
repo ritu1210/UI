@@ -1,14 +1,16 @@
 """JSON API endpoints consumed by the front-end pages."""
 from __future__ import annotations
 
+import csv
+import io
 import re
 from collections import Counter, defaultdict
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import config, data, store
+from . import config, data, db, store
 
 
 def _pretty_manager(email: str) -> str:
@@ -20,6 +22,15 @@ def _pretty_manager(email: str) -> str:
     return " ".join(p.capitalize() for p in parts) or email
 
 router = APIRouter(prefix="/api", tags=["api"])
+
+
+@router.get("/health/db")
+def health_db():
+    """Report Azure SQL connectivity for the configured _dev tables."""
+    result = db.health_check()
+    if result.get("status") != "ok":
+        raise HTTPException(status_code=503, detail=result)
+    return result
 
 
 class AllocationIn(BaseModel):
@@ -705,6 +716,144 @@ def add_funnel_project(payload: FunnelIn):
     }
 
 
+# ---------------------------------------------------------------------------
+# Bulk import: add many funnel projects from a spreadsheet (CSV / Excel /
+# Smartsheet export). Column headers are matched flexibly by name.
+# ---------------------------------------------------------------------------
+
+# Extra human-friendly header names accepted for spreadsheet / Smartsheet imports.
+# (The exact CSV column names and the API field keys are always matched too.)
+FUNNEL_HEADER_ALIASES = {
+    "project_id": ["project id", "smrs", "smrs id", "smrs / project id", "smrs/project id", "id"],
+    "title": ["project title", "title", "name", "project name", "funnel project title"],
+    "project_type": ["project type", "type"],
+    "bu": ["business unit"],
+    "cluster": ["cluster"],
+    "commodity": ["commodity"],
+    "current_il": ["il", "current integration level", "integration level"],
+    "il5_date": ["il5 date"],
+    "is_active": ["active", "status"],
+    "director": ["director"],
+    "spoc": ["spoc", "stet spoc"],
+    "program_manager": ["program manager", "pm"],
+    "comments": ["comments", "challenges", "comments / challenges"],
+}
+
+_MAX_IMPORT_BYTES = 12 * 1024 * 1024  # 12 MB
+
+
+def _norm_header(value: str | None) -> str:
+    """Normalise a spreadsheet header for tolerant matching."""
+    return " ".join(str(value or "").split()).strip().lower().rstrip(":*").strip()
+
+
+def _funnel_header_map() -> dict[str, str]:
+    """Map every recognised (normalised) header to its funnel field key."""
+    mapping: dict[str, str] = {}
+    for key, col in FUNNEL_COLUMNS.items():
+        mapping[_norm_header(col)] = key
+        mapping[_norm_header(key)] = key
+    for key, aliases in FUNNEL_HEADER_ALIASES.items():
+        for alias in aliases:
+            mapping[_norm_header(alias)] = key
+    return mapping
+
+
+def _read_upload_rows(filename: str, raw: bytes) -> list[dict[str, str]]:
+    """Parse an uploaded CSV or XLSX file into a list of header->value dicts."""
+    name = (filename or "").lower()
+    if name.endswith((".csv", ".txt")):
+        text = raw.decode("utf-8-sig", errors="replace")
+        return [dict(r) for r in csv.DictReader(io.StringIO(text))]
+    if name.endswith((".xlsx", ".xlsm")):
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            raise HTTPException(status_code=500, detail="Excel support is not installed on the server (pip install openpyxl)")
+        try:
+            wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Could not read the Excel file — is it a valid .xlsx?")
+        ws = wb.active
+        rows_iter = ws.iter_rows(values_only=True)
+        try:
+            header = next(rows_iter)
+        except StopIteration:
+            wb.close()
+            return []
+        headers = [str(h).strip() if h is not None else "" for h in header]
+        out: list[dict[str, str]] = []
+        for values in rows_iter:
+            row: dict[str, str] = {}
+            for i, head in enumerate(headers):
+                if not head:
+                    continue
+                cell = values[i] if i < len(values) else None
+                row[head] = "" if cell is None else str(cell)
+            if any(v.strip() for v in row.values()):
+                out.append(row)
+        wb.close()
+        return out
+    raise HTTPException(status_code=422, detail="Unsupported file type. Upload a .csv or .xlsx file")
+
+
+@router.post("/funnel/import")
+async def import_funnel_projects(file: UploadFile = File(...)):
+    """Bulk-add funnel projects from an uploaded spreadsheet.
+
+    Rows without a Project ID and Title are skipped, as are IDs that already
+    exist or repeat within the file. Returns a per-category summary.
+    """
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="The uploaded file is empty")
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File is too large (max 12 MB)")
+
+    rows = _read_upload_rows(file.filename or "", raw)
+    if not rows:
+        raise HTTPException(status_code=422, detail="No data rows were found in the file")
+
+    header_map = _funnel_header_map()
+    existing = set(data.project_index().keys())
+    seen_ids: set[str] = set()
+    to_add: list[dict[str, str]] = []
+    skipped_existing = duplicates = invalid = 0
+    errors: list[str] = []
+
+    for line, raw_row in enumerate(rows, start=2):  # row 1 is the header
+        mapped: dict[str, str] = {}
+        for header, val in raw_row.items():
+            key = header_map.get(_norm_header(header))
+            if key:
+                mapped[key] = "" if val is None else str(val).strip()
+        pid = (mapped.get("project_id") or "").strip()
+        title = (mapped.get("title") or "").strip()
+        if not pid or not title:
+            invalid += 1
+            if len(errors) < 15:
+                errors.append(f"Row {line}: missing Project ID or Title")
+            continue
+        if pid in existing:
+            skipped_existing += 1
+            continue
+        if pid in seen_ids:
+            duplicates += 1
+            continue
+        seen_ids.add(pid)
+        to_add.append({FUNNEL_COLUMNS[k]: v for k, v in mapped.items() if k in FUNNEL_COLUMNS})
+
+    added = data.append_projects(to_add)
+    return {
+        "added": added,
+        "skipped_existing": skipped_existing,
+        "duplicates": duplicates,
+        "invalid": invalid,
+        "total_rows": len(rows),
+        "errors": errors,
+    }
+
+
 class FunnelUpdate(BaseModel):
     project_id: str
     title: str | None = None
@@ -793,14 +942,22 @@ def add_headcount(payload: HeadcountIn):
 
 @router.get("/funnel/export")
 def export_funnel():
-    """Download the full funnel data as a CSV file."""
-    return FileResponse(config.FUNNEL_FILE, media_type="text/csv", filename="STET_Funnel.csv")
+    """Download the full funnel data (live from the database) as a CSV file."""
+    return Response(
+        content=data.export_projects_csv(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=STET_Funnel.csv"},
+    )
 
 
 @router.get("/headcount/export")
 def export_headcount():
-    """Download the full headcount data as a CSV file."""
-    return FileResponse(config.HEADCOUNT_FILE, media_type="text/csv", filename="STET_Headcount.csv")
+    """Download the full headcount data (live from the database) as a CSV file."""
+    return Response(
+        content=data.export_employees_csv(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=STET_Headcount.csv"},
+    )
 
 
 def _emp_key(e) -> str:
@@ -961,10 +1118,18 @@ def dashboard_business_unit(month: str | None = None):
     allocs = store.list_all()
     scoped = [a for a in allocs if a.month == sel_month] if sel_month else allocs
 
+    def bu_of(alloc) -> str:
+        project = proj_index.get(alloc.project_id)
+        return project.bu if project and project.bu else "Unassigned"
+
+    # BU roster: everyone ever allocated to the BU (denominator for staffing).
+    roster: dict[str, set] = defaultdict(set)
+    for a in allocs:
+        roster[bu_of(a)].add(a.employee)
+
     summary: dict[str, dict] = {}
     for a in scoped:
-        project = proj_index.get(a.project_id)
-        bu = project.bu if project and project.bu else "Unassigned"
+        bu = bu_of(a)
         bucket = summary.setdefault(bu, {"bu": bu, "employees": set(), "projects": set(), "total": 0.0, "count": 0})
         bucket["employees"].add(a.employee)
         bucket["projects"].add(a.project_id)
@@ -976,12 +1141,13 @@ def dashboard_business_unit(month: str | None = None):
         by_bu.append({
             "bu": bucket["bu"],
             "employees": len(bucket["employees"]),
+            "headcount": len(roster.get(bucket["bu"], ())),
             "projects": len(bucket["projects"]),
             "allocations": bucket["count"],
             "total_alloc": round(bucket["total"], 1),
             "avg_allocation": round(bucket["total"] / bucket["count"], 1) if bucket["count"] else 0,
         })
-    by_bu.sort(key=lambda r: r["total_alloc"], reverse=True)
+    by_bu.sort(key=lambda r: r["employees"], reverse=True)
 
     # 12-month total allocation trend across all business units.
     trend_by_month: dict[str, float] = defaultdict(float)
@@ -989,17 +1155,61 @@ def dashboard_business_unit(month: str | None = None):
         trend_by_month[a.month] += a.allocation
     trend = [{"month": m, "total": round(trend_by_month.get(m, 0.0), 1)} for m in store.MONTHS]
 
+    total_employees = len(data.load_employees())
+    allocated_employees = len({a.employee for a in scoped})
+
     return {
         "month": sel_month,
         "months": store.MONTHS,
         "kpis": {
             "business_units": len(by_bu),
-            "employees": len({a.employee for a in scoped}),
+            "total_employees": total_employees,
+            "employees": allocated_employees,
+            "bench": max(total_employees - allocated_employees, 0),
             "projects": len({a.project_id for a in scoped}),
-            "allocations": len(scoped),
-            "avg_allocation": round(sum(a.allocation for a in scoped) / len(scoped), 1) if scoped else 0,
-            "total_alloc": round(sum(a.allocation for a in scoped)),
         },
         "by_bu": by_bu,
         "trend": trend,
+    }
+
+
+@router.get("/kpi/funnel")
+def kpi_funnel():
+    """Funnel records + distinct slicer options for the Financials/Projects dashboards."""
+    records = data.kpi_records()
+
+    def distinct(key: str) -> list[str]:
+        return sorted({r[key] for r in records if r.get(key)}, key=lambda s: s.lower())
+
+    filters = {
+        k: distinct(k)
+        for k in (
+            "director", "cluster", "bu", "project_type", "commodity",
+            "savings_type", "procurement_type", "current_il", "spoc", "program_manager",
+        )
+    }
+    return {"count": len(records), "records": records, "filters": filters}
+
+
+@router.get("/kpi/resources")
+def kpi_resources():
+    """FTE resource-allocation records + slicer options for the Resources dashboard."""
+    records = data.resource_records()
+
+    def distinct(key: str) -> list[str]:
+        return sorted({r[key] for r in records if r.get(key)}, key=lambda s: s.lower())
+
+    filters = {
+        k: distinct(k)
+        for k in (
+            "proj_others", "director", "cluster", "bu", "region", "project_type",
+            "commodity", "savings_type", "fte_type", "status", "reporting_manager",
+        )
+    }
+    total_resource = sum(r["resource_amount"] for r in records)
+    return {
+        "count": len(records),
+        "records": records,
+        "filters": filters,
+        "total_resource": round(total_resource, 1),
     }

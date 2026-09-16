@@ -88,6 +88,122 @@ function AddProjectForm({ meta, onAdded }) {
   )
 }
 
+function ImportProjects({ onImported }) {
+  const showToast = useToast()
+  const inputRef = useRef(null)
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const [result, setResult] = useState(null)
+
+  function pick(f) {
+    if (!f) return
+    if (!/\.(csv|xlsx|xlsm)$/i.test(f.name)) {
+      showToast('Please choose a .csv or .xlsx file', true)
+      return
+    }
+    setFile(f)
+    setResult(null)
+  }
+
+  async function upload() {
+    if (!file || busy) return
+    setBusy(true)
+    setResult(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/funnel/import', { method: 'POST', body: fd })
+      const text = await res.text()
+      const data = text ? JSON.parse(text) : null
+      if (!res.ok) throw new Error((data && data.detail) || 'Import failed')
+      setResult(data)
+      if (data.added > 0) {
+        showToast(`Imported ${data.added} project${data.added === 1 ? '' : 's'}`)
+        onImported()
+      } else {
+        showToast('No new projects were imported', true)
+      }
+    } catch (e) {
+      showToast(e.message, true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card mp-import">
+      <div className="mp-import-intro">
+        <div className="mp-import-ic"><i className="fa-solid fa-file-import" /></div>
+        <div>
+          <h3>Import projects from a spreadsheet</h3>
+          <p>Upload an Excel (<code>.xlsx</code>) or CSV file — including a Smartsheet export. Each row becomes a funnel project. Columns are matched by header name, so your sheet can be in Smartsheet format.</p>
+        </div>
+      </div>
+
+      <div
+        className={`mp-drop${dragOver ? ' over' : ''}${file ? ' has-file' : ''}`}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); pick(e.dataTransfer.files?.[0]) }}
+      >
+        <input ref={inputRef} type="file" accept=".csv,.xlsx,.xlsm" hidden
+          onChange={(e) => pick(e.target.files?.[0])} />
+        {file ? (
+          <div className="mp-filechip">
+            <i className="fa-solid fa-file-lines" />
+            <span className="mp-filename">{file.name}</span>
+            <button type="button" className="mp-file-x" onClick={(e) => { e.stopPropagation(); setFile(null); setResult(null); if (inputRef.current) inputRef.current.value = '' }}>
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <i className="fa-solid fa-cloud-arrow-up mp-drop-ic" />
+            <p className="mp-drop-main">Drag &amp; drop your file here, or <span>browse</span></p>
+            <p className="mp-drop-sub">Accepts .xlsx and .csv up to 12 MB</p>
+          </>
+        )}
+      </div>
+
+      <div className="mp-import-note">
+        <i className="fa-solid fa-circle-info" />
+        <span>
+          Required columns: <strong>Project ID</strong> (or “SMRS / Project ID”) and <strong>Title</strong>.
+          Optional headers such as BU, Cluster, SPOC, Current IL, Director, Program Manager and the yearly Funnel/Actual amounts are imported when present. Rows with an ID that already exists are skipped.
+        </span>
+      </div>
+
+      <div className="mp-add-actions">
+        <a className="btn btn-ghost" href="/api/funnel/export" download>
+          <i className="fa-solid fa-file-arrow-down" /> Download template
+        </a>
+        <button className="btn btn-primary" type="button" onClick={upload} disabled={!file || busy}>
+          <i className="fa-solid fa-file-import" /> {busy ? 'Importing\u2026' : 'Import projects'}
+        </button>
+      </div>
+
+      {result && (
+        <div className="mp-result">
+          <div className="mp-result-grid">
+            <div className="mp-result-cell ok"><span className="mp-result-val">{result.added}</span><span className="mp-result-lbl">Added</span></div>
+            <div className="mp-result-cell"><span className="mp-result-val">{result.skipped_existing}</span><span className="mp-result-lbl">Already existed</span></div>
+            <div className="mp-result-cell"><span className="mp-result-val">{result.duplicates}</span><span className="mp-result-lbl">Duplicate in file</span></div>
+            <div className="mp-result-cell warn"><span className="mp-result-val">{result.invalid}</span><span className="mp-result-lbl">Missing ID/Title</span></div>
+            <div className="mp-result-cell"><span className="mp-result-val">{result.total_rows}</span><span className="mp-result-lbl">Rows read</span></div>
+          </div>
+          {result.errors?.length > 0 && (
+            <ul className="mp-result-errors">
+              {result.errors.map((e, i) => <li key={i}><i className="fa-solid fa-triangle-exclamation" /> {e}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ManageProjects() {
   const showToast = useToast()
   const [view, setView] = useState('manage') // 'manage' | 'add'
@@ -212,6 +328,9 @@ export default function ManageProjects() {
           <button className={view === 'add' ? 'active' : ''} onClick={() => setView('add')}>
             <i className="fa-solid fa-plus" /> Add Project
           </button>
+          <button className={view === 'import' ? 'active' : ''} onClick={() => setView('import')}>
+            <i className="fa-solid fa-file-import" /> Import
+          </button>
         </div>
         <a className="mp-export" href="/api/funnel/export" download>
           <i className="fa-solid fa-file-arrow-down" /> Download CSV
@@ -220,6 +339,8 @@ export default function ManageProjects() {
 
       {view === 'add' ? (
         <AddProjectForm meta={meta} onAdded={onAdded} />
+      ) : view === 'import' ? (
+        <ImportProjects onImported={onAdded} />
       ) : (
         <>
           <div className="mp-stats">

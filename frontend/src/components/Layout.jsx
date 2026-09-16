@@ -7,6 +7,7 @@ const NAV = [
   { to: '/allocation', icon: 'fa-diagram-project', label: 'Allocation', tip: 'Project Allocation' },
   { to: '/manage-projects', icon: 'fa-layer-group', label: 'Projects', tip: 'Add / Manage Projects' },
   { to: '/manage-people', icon: 'fa-user-group', label: 'Headcount', tip: 'Add / Manage Headcount' },
+  { to: '/kpi', icon: 'fa-chart-pie', label: 'KPI Dashboard', tip: 'STET KPI Dashboard' },
   { to: '/dashboard/user', icon: 'fa-user-gear', label: 'User', tip: 'User Dashboard' },
   { to: '/dashboard/people-leader', icon: 'fa-users', label: 'Leader', tip: 'People Leader Dashboard' },
   { to: '/dashboard/business-unit', icon: 'fa-building', label: 'Business Unit', tip: 'Business Unit Dashboard' },

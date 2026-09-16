@@ -20,7 +20,7 @@ cards, dark navy data tables and gradient buttons.
 Reference data currently loads from CSV files in `Dumpdata/`:
 
 - `STET Headcount (3).csv` — employees
-- `STET Funnel (1).csv` — projects
+- `Funnel Management List (1).csv` — projects
 
 Allocations are held in memory (seeded with samples) for now. This will move to a
 SQL database later; only `app/data.py` and `app/store.py` need to change.

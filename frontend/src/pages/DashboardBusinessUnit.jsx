@@ -41,7 +41,7 @@ export default function DashboardBusinessUnit() {
   const k = data.kpis
   const topAvg = data.by_bu.slice(0, 12)
   const topShare = data.by_bu.slice(0, 10)
-  const grandTotal = data.by_bu.reduce((s, r) => s + r.total_alloc, 0) || 1
+  const peopleTotal = data.by_bu.reduce((s, r) => s + r.employees, 0) || 1
 
   return (
     <>
@@ -70,10 +70,10 @@ export default function DashboardBusinessUnit() {
 
         <div className="stat-row kpi-grid">
           {statCard(k.business_units, 'Business Units')}
-          {statCard(k.employees, 'Allocated Employees')}
-          {statCard(k.projects, 'Active Projects', 'accent')}
-          {statCard(`${k.avg_allocation}%`, 'Avg Allocation')}
-          {statCard(k.total_alloc, 'Total Allocation Pts', 'deep')}
+          {statCard(k.total_employees, 'Total Employees')}
+          {statCard(k.employees, 'Allocated Employees', 'accent')}
+          {statCard(k.bench, 'People on Bench', 'deep')}
+          {statCard(k.projects, 'Active Projects')}
         </div>
         <div style={{ height: 20 }} />
       </section>
@@ -86,10 +86,10 @@ export default function DashboardBusinessUnit() {
           />
         </ChartCard>
 
-        <ChartCard icon="fa-chart-pie" title="Allocation Share by BU">
+        <ChartCard icon="fa-chart-pie" title="People Allocated by BU">
           <Doughnut
-            data={{ labels: topShare.map((r) => r.bu), datasets: [{ data: topShare.map((r) => r.total_alloc), backgroundColor: topShare.map((_, i) => BU_PALETTE[i % BU_PALETTE.length]), borderWidth: 2, borderColor: '#fff' }] }}
-            options={{ ...noAspect, cutout: '58%', plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.label}: ${c.parsed} allocation pts` } } } }}
+            data={{ labels: topShare.map((r) => r.bu), datasets: [{ data: topShare.map((r) => r.employees), backgroundColor: topShare.map((_, i) => BU_PALETTE[i % BU_PALETTE.length]), borderWidth: 2, borderColor: '#fff' }] }}
+            options={{ ...noAspect, cutout: '58%', plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: (c) => ` ${c.label}: ${c.parsed} ${c.parsed === 1 ? 'person' : 'people'}` } } } }}
           />
         </ChartCard>
 
@@ -112,18 +112,17 @@ export default function DashboardBusinessUnit() {
       <section className="card no-pad">
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Business Unit</th><th>Employees</th><th>Projects</th><th>Allocations</th><th>Avg Allocation</th><th>Share</th></tr></thead>
+            <thead><tr><th>Business Unit</th><th>People Allocated</th><th>Projects</th><th>Avg Allocation</th><th>Share of People</th></tr></thead>
             <tbody>
               {data.by_bu.length === 0
-                ? <tr className="empty-row"><td colSpan={6}>No data.</td></tr>
+                ? <tr className="empty-row"><td colSpan={5}>No data.</td></tr>
                 : data.by_bu.map((r) => {
-                  const share = Math.round((r.total_alloc / grandTotal) * 100)
+                  const share = Math.round((r.employees / peopleTotal) * 100)
                   return (
                     <tr key={r.bu}>
                       <td><strong>{r.bu}</strong></td>
-                      <td>{r.employees}</td>
+                      <td>{r.employees} <span className="muted-of">of {r.headcount}</span></td>
                       <td>{r.projects}</td>
-                      <td>{r.allocations}</td>
                       <td>{utilPill(r.avg_allocation)}</td>
                       <td><div className="coverage-bar"><span style={{ width: `${share}%` }} /></div><span className="coverage-txt">{share}%</span></td>
                     </tr>
