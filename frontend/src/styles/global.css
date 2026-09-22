@@ -1100,6 +1100,75 @@ select:focus, input:focus { border-color: var(--philips-blue); box-shadow: 0 0 0
 @media (max-width: 1100px) { .kpi-grid { grid-template-columns: 1fr; } }
 .kpi-grid .chart-card.span2 { grid-column: span 2; }
 @media (max-width: 1100px) { .kpi-grid .chart-card.span2 { grid-column: span 1; } }
+
+/* ---- Competency view ---- */
+.comp-note {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff7e6; border: 1px solid #ffe1a6; color: #8a5a00;
+  padding: 11px 15px; border-radius: 12px; margin-bottom: 18px; font-size: 12.5px;
+}
+.comp-note i { color: #d98a00; }
+.comp-dummy-tag {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .5px; vertical-align: middle;
+  background: #fff0d6; color: #b46b00; border: 1px solid #ffd591;
+  padding: 1px 6px; border-radius: 6px; margin-left: 6px;
+}
+.comp-drill { margin-top: 26px; }
+.comp-drill-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.comp-drill-head h3 { margin: 0 0 3px; font-size: 17px; color: var(--navy); }
+.comp-team-tabs { display: flex; gap: 7px; flex-wrap: wrap; }
+.comp-team-btn {
+  border: 1px solid #d9e2f0; background: #fff; color: var(--navy);
+  font-weight: 700; font-size: 12px; padding: 7px 13px; border-radius: 9px;
+  cursor: pointer; transition: all .15s;
+}
+.comp-team-btn:hover { border-color: var(--philips-blue); color: var(--philips-blue); }
+.comp-team-btn.active { background: var(--philips-blue); border-color: var(--philips-blue); color: #fff; }
+
+.comp-train-box { display: flex; flex-direction: column; gap: 13px; max-height: 340px; overflow-y: auto; padding-right: 4px; }
+.comp-train-empty { display: flex; align-items: center; gap: 8px; color: #0f9b90; font-weight: 600; font-size: 13px; padding: 14px 0; }
+.comp-train-row { border-bottom: 1px solid #eef2f8; padding-bottom: 11px; }
+.comp-train-row:last-child { border-bottom: none; }
+.comp-train-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.comp-train-name { font-weight: 700; font-size: 13px; color: var(--navy); }
+.comp-train-score { font-weight: 800; font-size: 13px; }
+.comp-train-score.warn { color: #d98a00; }
+.comp-train-score.crit { color: #e5484d; }
+.comp-train-bar { height: 6px; background: #eef2f8; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+.comp-train-bar span { display: block; height: 100%; background: linear-gradient(90deg, #e5484d, #f5a524); border-radius: 4px; }
+.comp-train-skills { display: flex; gap: 6px; flex-wrap: wrap; }
+.comp-skill-chip {
+  font-size: 10.5px; font-weight: 600; color: #34517f;
+  background: #eef4ff; border: 1px solid #dce7fb; padding: 2px 8px; border-radius: 20px;
+}
+.comp-dummy-tag.sm { font-size: 8.5px; padding: 0 5px; margin-left: 4px; }
+
+/* Achievement pill on KPI card */
+.comp-pill {
+  display: inline-block; white-space: nowrap;
+  font-size: 10px; font-weight: 800; letter-spacing: .3px;
+  padding: 2px 8px; border-radius: 20px; margin-top: 5px;
+}
+.comp-pill.ok { background: #dff5f2; color: #0f9b90; border: 1px solid #b7e7e0; }
+.comp-pill.warn { background: #fff0d6; color: #b46b00; border: 1px solid #ffd591; }
+
+/* Chart colour legend (self-explanatory, no hover) */
+.comp-legend {
+  display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid #eef2f8;
+}
+.comp-legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: #475569; }
+.comp-legend span i { width: 13px; height: 13px; border-radius: 4px; display: inline-block; }
+.comp-legend-dash i { width: 16px; height: 0; border-radius: 0; border-top: 2px dashed #0f2350; }
+
+/* Status dot on function buttons */
+.comp-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.comp-dot.ok { background: #16b8a6; }
+.comp-dot.bad { background: #e5484d; }
+.comp-team-btn.active .comp-dot { box-shadow: 0 0 0 2px rgba(255, 255, 255, .5); }
 .chart-head > div { display: flex; flex-direction: column; }
 .chart-sub { font-size: 11.5px; color: var(--muted); font-weight: 600; margin-top: 1px; }
 

@@ -2,11 +2,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import { ToastProvider } from './context/ToastContext'
 import Allocation from './pages/Allocation'
-import DashboardBusinessUnit from './pages/DashboardBusinessUnit'
-import DashboardLeader from './pages/DashboardLeader'
-import DashboardUser from './pages/DashboardUser'
 import DataEntry from './pages/DataEntry'
 import KpiDashboard from './pages/KpiDashboard'
+import ResourceDashboards from './pages/ResourceDashboards'
 import ManageProjects from './pages/ManageProjects'
 import ManagePeople from './pages/ManagePeople'
 import Login from './pages/Login'
@@ -25,9 +23,10 @@ export default function App() {
             <Route path="/manage-projects" element={<ManageProjects />} />
             <Route path="/manage-people" element={<ManagePeople />} />
             <Route path="/kpi" element={<KpiDashboard />} />
-            <Route path="/dashboard/user" element={<DashboardUser />} />
-            <Route path="/dashboard/people-leader" element={<DashboardLeader />} />
-            <Route path="/dashboard/business-unit" element={<DashboardBusinessUnit />} />
+            <Route path="/dashboards" element={<ResourceDashboards />} />
+            <Route path="/dashboard/user" element={<Navigate to="/dashboards" replace />} />
+            <Route path="/dashboard/people-leader" element={<Navigate to="/dashboards" replace />} />
+            <Route path="/dashboard/business-unit" element={<Navigate to="/dashboards" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

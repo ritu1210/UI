@@ -5,11 +5,13 @@ import { applyFilters, emptySelection, loadKpi } from '../lib/kpi'
 import FinancialsView from './kpi/FinancialsView'
 import ProjectsView from './kpi/ProjectsView'
 import ResourceView from './kpi/ResourceView'
+import CompetencyView from './kpi/CompetencyView'
 
 const VIEWS = [
   { key: 'financials', label: 'Financials', icon: 'fa-euro-sign', sub: 'Funnel & actual savings' },
   { key: 'projects', label: 'Projects', icon: 'fa-layer-group', sub: 'Portfolio composition' },
   { key: 'resources', label: 'Resource Allocation', icon: 'fa-users-gear', sub: 'FTE & contingent load' },
+  { key: 'competency', label: 'Competency Matrix', icon: 'fa-user-graduate', sub: 'BU-GB skills vs target' },
 ]
 
 export default function KpiDashboard() {
@@ -27,9 +29,9 @@ export default function KpiDashboard() {
     [payload, selected],
   )
 
-  if (!payload) return <div className="loading-wrap"><span className="spinner" /> Loading dashboard…</div>
-
   const isResources = view === 'resources'
+  const isCompetency = view === 'competency'
+  const isStandalone = isResources || isCompetency
 
   return (
     <>
@@ -40,7 +42,7 @@ export default function KpiDashboard() {
           <p>Live funnel &amp; resource analytics across the STET portfolio.</p>
         </div>
         <div className="kpi-hero-meta">
-          {!isResources && (
+          {!isStandalone && (
             <div className="kpi-hero-chip"><i className="fa-solid fa-diagram-project" /> {records.length.toLocaleString()} projects</div>
           )}
           <div className="kpi-hero-chip live"><span className="live-dot" /> Live data</div>
@@ -65,19 +67,24 @@ export default function KpiDashboard() {
 
       <div key={view} className="kpi-view-fade">
         {isResources && <ResourceView />}
-        {!isResources && (
-          <>
-            <KpiFilterBar
-              options={payload.filters}
-              selected={selected}
-              setSelected={setSelected}
-              matched={records.length}
-              total={payload.count}
-            />
-            {view === 'financials'
-              ? <FinancialsView records={records} />
-              : <ProjectsView records={records} />}
-          </>
+        {isCompetency && <CompetencyView />}
+        {!isStandalone && (
+          !payload
+            ? <div className="loading-wrap"><span className="spinner" /> Loading dashboard…</div>
+            : (
+              <>
+                <KpiFilterBar
+                  options={payload.filters}
+                  selected={selected}
+                  setSelected={setSelected}
+                  matched={records.length}
+                  total={payload.count}
+                />
+                {view === 'financials'
+                  ? <FinancialsView records={records} />
+                  : <ProjectsView records={records} />}
+              </>
+            )
         )}
       </div>
     </>
