@@ -49,3 +49,7 @@ Thumbs.db
 
 # ---- Large dashboard workbooks ----
 dashboard_data/*.xlsm
+dashboard_data/STET-GB Competency Assessments*.xlsx
+
+# ---- Notebooks ----
+test.ipynb

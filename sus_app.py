@@ -988,4 +988,3 @@ def health():
     except Exception:
         logger.exception("Health check failed")
         return {"status": "error", "message": "Database connection unavailable"}
-
