@@ -29,7 +29,7 @@ function SavedRow({ a, onEdit, onCopy, onDelete }) {
   )
 }
 
-function AllocationRow({ mode, employee = '', pid = '', title = '', month = '', alloc = 100, empSource, projSource, onSave, onCancel, onActivate }) {
+function AllocationRow({ mode, employee = '', pid = '', title = '', month = '', alloc = 100, empSource, projSource, onSave, onCancel, onActivate, autoActivate }) {
   const showToast = useToast()
   const locked = mode === 'roster'
   const [emp, setEmp] = useState(employee)
@@ -42,13 +42,20 @@ function AllocationRow({ mode, employee = '', pid = '', title = '', month = '', 
     if (onActivate) onActivate((project) => { setProjId(project.project_id); setProjTitle(project.title || '') })
   }
 
+  // Draft/edit rows claim the project-search target as soon as they open.
+  useEffect(() => {
+    if (autoActivate && onActivate) {
+      onActivate((project) => { setProjId(project.project_id); setProjTitle(project.title || '') })
+    }
+  }, [autoActivate, onActivate])
+
   function save() {
     const employeeVal = (locked ? employee : emp).trim()
     if (!employeeVal) return showToast('Please select an employee', true)
     if (!projId) return showToast('Please select a project', true)
     if (!mon) return showToast('Please select a month', true)
     const a = parseFloat(al)
-    if (Number.isNaN(a) || a < 0 || a > 100) return showToast('Allocation must be 0-100', true)
+    if (Number.isNaN(a) || a < 5 || a > 100) return showToast('Allocation must be 5-100', true)
     onSave({ employee: employeeVal, project_id: projId, month: mon, allocation: a })
   }
 
@@ -75,7 +82,7 @@ function AllocationRow({ mode, employee = '', pid = '', title = '', month = '', 
           {ALLOCATABLE.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
       </td>
-      <td><input type="number" className="alloc-input" min="0" max="100" value={al} onChange={(e) => setAl(e.target.value)} /></td>
+      <td><input type="number" className="alloc-input" min="5" max="100" value={al} onChange={(e) => setAl(e.target.value)} /></td>
       <td className="col-actions">
         <button className="row-btn save" title="Save allocation" onClick={save}><i className="fa-solid fa-floppy-disk" /></button>
         {!locked && <button className="row-btn cancel" title="Cancel" onClick={onCancel}><i className="fa-solid fa-xmark" /></button>}
@@ -294,6 +301,7 @@ export default function Allocation() {
                     empSource={empSource}
                     projSource={projSource}
                     onActivate={onActivate}
+                    autoActivate
                     onSave={saveNew}
                     onCancel={() => setShowDraft(false)}
                   />
@@ -320,6 +328,7 @@ export default function Allocation() {
                       empSource={empSource}
                       projSource={projSource}
                       onActivate={onActivate}
+                      autoActivate
                       onSave={(payload) => saveEdit(a.id, payload)}
                       onCancel={() => setEditingId(null)}
                     />

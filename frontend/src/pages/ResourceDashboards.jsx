@@ -4,13 +4,13 @@ import DashboardLeader from './DashboardLeader'
 import DashboardBusinessUnit from './DashboardBusinessUnit'
 
 const VIEWS = [
-  { key: 'user', label: 'User', icon: 'fa-user-gear', sub: 'Individual allocation', comp: DashboardUser },
-  { key: 'leader', label: 'People Leader', icon: 'fa-users', sub: 'Team utilization & bench', comp: DashboardLeader },
   { key: 'bu', label: 'Business Unit', icon: 'fa-building', sub: 'Cross-BU allocation', comp: DashboardBusinessUnit },
+  { key: 'leader', label: 'People Leader', icon: 'fa-users', sub: 'Team utilization & bench', comp: DashboardLeader },
+  { key: 'user', label: 'User', icon: 'fa-user-gear', sub: 'Individual allocation', comp: DashboardUser },
 ]
 
 export default function ResourceDashboards() {
-  const [view, setView] = useState('user')
+  const [view, setView] = useState('bu')
   const Active = VIEWS.find((v) => v.key === view).comp
 
   return (

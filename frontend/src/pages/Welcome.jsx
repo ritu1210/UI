@@ -5,11 +5,10 @@ import { apiFetch } from '../lib/api'
 
 const NAV_CARDS = [
   { to: '/allocation', icon: 'fa-diagram-project', title: 'Project Allocation', sub: 'Assign people to projects by month' },
+  { to: '/dashboards', icon: 'fa-chart-column', title: 'Resource Allocation Dashboards', sub: 'User, people leader & business unit views' },
   { to: '/manage-projects', icon: 'fa-layer-group', title: 'Projects', sub: 'Add & manage funnel projects' },
   { to: '/manage-people', icon: 'fa-user-group', title: 'Headcount', sub: 'Add & manage employees' },
-  { to: '/dashboard/user', icon: 'fa-user-gear', title: 'User Dashboard', sub: 'Allocation by cluster, BU & type' },
-  { to: '/dashboard/people-leader', icon: 'fa-users', title: 'People Leader Dashboard', sub: 'Team utilization & bench risk' },
-  { to: '/dashboard/business-unit', icon: 'fa-building', title: 'Business Unit Dashboard', sub: 'Allocation across BUs' },
+  { to: '/kpi', icon: 'fa-chart-pie', title: 'KPI Dashboard', sub: 'Funnel, savings & competency' },
 ]
 
 const STAT_META = [
@@ -54,7 +53,7 @@ export default function Welcome() {
           <p>Track full-time employee allocations across projects, people leaders and business units — one clear place to plan, review and report.</p>
           <div className="hero-actions">
             <Link className="btn btn-primary" to="/allocation"><i className="fa-solid fa-diagram-project" /> Start Allocating</Link>
-            <Link className="btn btn-hero-ghost" to="/dashboard/people-leader"><i className="fa-solid fa-chart-line" /> View Dashboards</Link>
+            <Link className="btn btn-hero-ghost" to="/dashboards"><i className="fa-solid fa-chart-line" /> View Dashboards</Link>
           </div>
         </div>
       </section>

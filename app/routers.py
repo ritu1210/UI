@@ -6,9 +6,9 @@ import io
 import re
 from collections import Counter, defaultdict
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import config, data, db, store
 
@@ -34,17 +34,17 @@ def health_db():
 
 
 class AllocationIn(BaseModel):
-    employee: str
-    project_id: str
-    month: str
-    allocation: float
+    employee: str = Field(min_length=1, max_length=255)
+    project_id: str = Field(min_length=1, max_length=100)
+    month: str = Field(min_length=1, max_length=50)
+    allocation: float = Field(ge=5, le=100, allow_inf_nan=False)
 
 
 class AllocationPatch(BaseModel):
-    employee: str | None = None
-    project_id: str | None = None
-    month: str | None = None
-    allocation: float | None = None
+    employee: str | None = Field(default=None, min_length=1, max_length=255)
+    project_id: str | None = Field(default=None, min_length=1, max_length=100)
+    month: str | None = Field(default=None, min_length=1, max_length=50)
+    allocation: float | None = Field(default=None, ge=5, le=100, allow_inf_nan=False)
 
 
 def _serialize(alloc: store.Allocation) -> dict:
@@ -78,7 +78,7 @@ def get_employees(q: str | None = None):
 
 
 @router.get("/projects")
-def get_projects(q: str | None = None, limit: int = 50):
+def get_projects(q: str | None = None, limit: int = Query(50, ge=0)):
     projects = data.load_projects()
     if q:
         needle = q.lower()
@@ -102,7 +102,7 @@ def get_projects(q: str | None = None, limit: int = 50):
 
 
 @router.get("/projects/page")
-def get_projects_page(q: str | None = None, active: str | None = None, bu: str | None = None, spoc: str | None = None, page: int = 1, size: int = 25):
+def get_projects_page(q: str | None = None, active: str | None = None, bu: str | None = None, spoc: str | None = None, page: int = Query(1, ge=1), size: int = Query(25, ge=1)):
     """Paginated project list for the SharePoint-style Manage Projects table."""
     projects = data.load_projects()
     if q:
@@ -1109,28 +1109,47 @@ def update_headcount(payload: HeadcountUpdate):
     }
 
 
+# Administrative buckets that are not real business units (case-insensitive).
+_NON_BUS = {"long leave", "all", "events", "funnel activities", "l&a", "unassigned", ""}
+# Merge known case/spelling variants to one canonical BU label.
+_BU_CANON = {"igt-mos": "IGT-MoS", "dxr": "DXR"}
+
+
+def _canon_bu(raw: str | None) -> str | None:
+    """Canonical business-unit label, or None if the value is not a real BU."""
+    s = (raw or "").strip()
+    if s.lower() in _NON_BUS:
+        return None
+    return _BU_CANON.get(s.lower(), s)
+
+
 @router.get("/dashboard/business-unit")
-def dashboard_business_unit(month: str | None = None):
+def dashboard_business_unit(month: str | None = None, bu: str | None = None):
     """Business-unit view: allocation, headcount and project spread per BU."""
     proj_index = data.project_index()
     sel_month = month if month in store.MONTHS else None  # None => all months
 
-    allocs = store.list_all()
-    scoped = [a for a in allocs if a.month == sel_month] if sel_month else allocs
-
-    def bu_of(alloc) -> str:
+    def bu_of(alloc) -> str | None:
         project = proj_index.get(alloc.project_id)
-        return project.bu if project and project.bu else "Unassigned"
+        return _canon_bu(project.bu if project else None)
+
+    # Keep only allocations that map to a real business unit.
+    real_all = [a for a in store.list_all() if bu_of(a)]
+    bus_list = sorted({bu_of(a) for a in real_all})
+    sel_bu = bu if bu in bus_list else None
+
+    real_bu = [a for a in real_all if bu_of(a) == sel_bu] if sel_bu else real_all
+    scoped = [a for a in real_bu if a.month == sel_month] if sel_month else real_bu
 
     # BU roster: everyone ever allocated to the BU (denominator for staffing).
     roster: dict[str, set] = defaultdict(set)
-    for a in allocs:
+    for a in real_all:
         roster[bu_of(a)].add(a.employee)
 
     summary: dict[str, dict] = {}
     for a in scoped:
-        bu = bu_of(a)
-        bucket = summary.setdefault(bu, {"bu": bu, "employees": set(), "projects": set(), "total": 0.0, "count": 0})
+        b = bu_of(a)
+        bucket = summary.setdefault(b, {"bu": b, "employees": set(), "projects": set(), "total": 0.0, "count": 0})
         bucket["employees"].add(a.employee)
         bucket["projects"].add(a.project_id)
         bucket["total"] += a.allocation
@@ -1149,24 +1168,54 @@ def dashboard_business_unit(month: str | None = None):
         })
     by_bu.sort(key=lambda r: r["employees"], reverse=True)
 
-    # 12-month total allocation trend across all business units.
+    # Funnel (pipeline) project count per BU, to compare against staffed projects.
+    funnel_by_bu: Counter = Counter()
+    for p in data.load_projects():
+        cb = _canon_bu(p.bu)
+        if cb:
+            funnel_by_bu[cb] += 1
+    for row in by_bu:
+        row["funnel"] = funnel_by_bu.get(row["bu"], 0)
+
+    # 12-month total allocation trend (respects the BU filter).
     trend_by_month: dict[str, float] = defaultdict(float)
-    for a in allocs:
+    for a in real_bu:
         trend_by_month[a.month] += a.allocation
     trend = [{"month": m, "total": round(trend_by_month.get(m, 0.0), 1)} for m in store.MONTHS]
 
-    total_employees = len(data.load_employees())
+    employees = data.load_employees()
+    emp_status = {e.name: (e.status or "") for e in employees}
+
+    def _resigned(name: str) -> bool:
+        return "resign" in emp_status.get(name, "").lower()
+
+    # People in scope: the selected BU's roster, or all headcount when unfiltered.
+    scope_people = roster.get(sel_bu, set()) if sel_bu else {e.name for e in employees}
+    total_people = len(scope_people)
     allocated_employees = len({a.employee for a in scoped})
+    resigned = sum(1 for n in scope_people if _resigned(n))
+
+    # Funnel projects = the pipeline for the BU (portfolio, not monthly).
+    all_projects = data.load_projects()
+    funnel_projects = (
+        sum(1 for p in all_projects if _canon_bu(p.bu) == sel_bu) if sel_bu else len(all_projects)
+    )
+    # Staffed projects = projects with at least one allocation in the current scope.
+    staffed_projects = len({a.project_id for a in scoped})
 
     return {
         "month": sel_month,
         "months": store.MONTHS,
+        "bu": sel_bu,
+        "bus": bus_list,
         "kpis": {
             "business_units": len(by_bu),
-            "total_employees": total_employees,
+            "total_employees": total_people,
             "employees": allocated_employees,
-            "bench": max(total_employees - allocated_employees, 0),
-            "projects": len({a.project_id for a in scoped}),
+            "not_allocated": max(total_people - allocated_employees, 0),
+            "resigned": resigned,
+            "funnel_projects": funnel_projects,
+            "staffed_projects": staffed_projects,
         },
         "by_bu": by_bu,
         "trend": trend,

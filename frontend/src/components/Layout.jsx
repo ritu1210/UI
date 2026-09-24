@@ -5,10 +5,10 @@ import { APP_NAME, APP_TAGLINE, CURRENT_USER, userInitials } from '../lib/consta
 const NAV = [
   { to: '/', icon: 'fa-house', label: 'Home', tip: 'Home', end: true },
   { to: '/allocation', icon: 'fa-diagram-project', label: 'Allocation', tip: 'Project Allocation' },
+  { to: '/dashboards', icon: 'fa-chart-column', label: 'Dashboards', tip: 'Resource Allocation Dashboards' },
   { to: '/manage-projects', icon: 'fa-layer-group', label: 'Projects', tip: 'Add / Manage Projects' },
   { to: '/manage-people', icon: 'fa-user-group', label: 'Headcount', tip: 'Add / Manage Headcount' },
   { to: '/kpi', icon: 'fa-chart-pie', label: 'KPI Dashboard', tip: 'STET KPI Dashboard' },
-  { to: '/dashboards', icon: 'fa-chart-column', label: 'Dashboards', tip: 'Resource Allocation Dashboards' },
 ]
 
 export default function Layout() {
